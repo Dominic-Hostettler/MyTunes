@@ -9,6 +9,7 @@ using System.Drawing;
 using System.Drawing.Text;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -72,6 +73,7 @@ class DarkTable : ProfessionalColorTable {
 
 class SeekBar : Panel {
     public double Frac;
+    public Color TrackColor = Color.Empty;
     public event Action<double> Seeked;
     public SeekBar() { DoubleBuffered = true; Cursor = Cursors.Hand; }
     void Set(int x) {
@@ -88,7 +90,8 @@ class SeekBar : Panel {
     }
     protected override void OnPaint(PaintEventArgs e) {
         var g = e.Graphics; int y = Height / 2 - 2;
-        g.FillRectangle(SystemBrushes.ControlLight, 0, y, Width, 4);
+        var track = TrackColor.IsEmpty ? (Brush)SystemBrushes.ControlLight : new SolidBrush(TrackColor);
+        g.FillRectangle(track, 0, y, Width, 4);
         int fill = (int)(Width * Frac);
         g.FillRectangle(SystemBrushes.Highlight, 0, y, fill, 4);
         g.FillEllipse(SystemBrushes.Highlight, Math.Max(0, fill - 5), y - 3, 10, 10);
@@ -415,6 +418,7 @@ class MainForm : Form {
             }
             scanning = false;
             statusLbl.Text = lv.Items.Count + " Tracks";
+            SetGroupColor(darkOn ? Color.FromArgb(200, 200, 200) : Color.FromArgb(85, 85, 85));
         }
     }
 
@@ -525,6 +529,38 @@ class MainForm : Form {
         MessageBox.Show("Kein Treffer für '" + q + "'", "Medien durchsuchen");
     }
 
+    // ---------- Gruppen-Header Farbe (LVM_SETGROUPMETRICS) ----------
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, int w, ref LVGROUPMETRICS m);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    struct LVGROUPMETRICS {
+        public uint cbSize, mask;
+        public IntPtr pszHeader; public uint cchHeader;
+        public IntPtr pszFooter; public uint cchFooter;
+        public int crHeader, crFooter, crTopEdge, crBottomEdge, crLeftEdge, crRightEdge;
+    }
+    void SetGroupColor(Color c) {
+        var m = new LVGROUPMETRICS { cbSize = (uint)Marshal.SizeOf(typeof(LVGROUPMETRICS)), mask = 4, crHeader = ColorTranslator.ToWin32(c) };
+        if (lv.IsHandleCreated) SendMessage(lv.Handle, 0x1093, 0, ref m);
+    }
+
+    // ---------- groessere Resize-Greifzone (14px ins Fenster rein) ----------
+    protected override void WndProc(ref Message m) {
+        base.WndProc(ref m);
+        if (m.Msg == 0x84 /*WM_NCHITTEST*/ && m.Result == (IntPtr)1 /*HTCLIENT*/) {
+            const int g = 14;
+            var p = PointToClient(Cursor.Position);
+            bool l = p.X < g, r = p.X > ClientSize.Width - g, t = p.Y < g, b = p.Y > ClientSize.Height - g;
+            if      (b && l) m.Result = (IntPtr)16;   // BOTTOMLEFT
+            else if (b && r) m.Result = (IntPtr)17;   // BOTTOMRIGHT
+            else if (t && l) m.Result = (IntPtr)13;   // TOPLEFT
+            else if (t && r) m.Result = (IntPtr)14;   // TOPRIGHT
+            else if (l) m.Result = (IntPtr)10;        // LEFT
+            else if (r) m.Result = (IntPtr)11;        // RIGHT
+            else if (t) m.Result = (IntPtr)12;        // TOP
+            else if (b) m.Result = (IntPtr)15;        // BOTTOM
+        }
+    }
+
     // ---------- Ansicht ----------
     bool darkOn;
     void SetDark(bool on) {
@@ -546,6 +582,8 @@ class MainForm : Form {
         var r = on ? (ToolStripRenderer)new ToolStripProfessionalRenderer(new DarkTable())
                    : new ToolStripProfessionalRenderer();
         menu.Renderer = r; status.Renderer = r;
+        seek.TrackColor = on ? Color.FromArgb(62, 62, 66) : Color.Empty;
+        SetGroupColor(on ? Color.FromArgb(200, 200, 200) : Color.FromArgb(85, 85, 85));
         SetIcons(fg);
         seek.Invalidate();
     }
