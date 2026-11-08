@@ -393,10 +393,8 @@ class MainForm : Form {
             pending.Clear();
             lv.EndUpdate();
         }
-        statusLbl.Text = lv.Items.Count + " Tracks";
-        Text = hadCache && scanning ? "MyTunes - " + lv.Items.Count + " Tracks (scanne... " + scanned.Count + ")"
-            : hadCache ? "MyTunes - " + lv.Items.Count + " Tracks"
-            : "MyTunes - scanne... " + lv.Items.Count;
+        statusLbl.Text = scanning ? lv.Items.Count + " Tracks (scanne... " + scanned.Count + ")"
+                                  : lv.Items.Count + " Tracks";
         if (scanDone && queue.IsEmpty) {
             scanTimer.Stop();
             if (scanned.Count > 0) {
@@ -404,7 +402,7 @@ class MainForm : Form {
                 File.WriteAllLines(Cache, scanned.Select(x => x.Path));
             }
             scanning = false;
-            Text = "MyTunes - " + lv.Items.Count + " Tracks";
+            statusLbl.Text = lv.Items.Count + " Tracks";
         }
     }
 
@@ -428,7 +426,6 @@ class MainForm : Form {
         wmp.URL = (string)it.Tag;
         seek.Frac = 0;
         nowLbl.Text = it.SubItems[2].Text + " - " + it.SubItems[1].Text;
-        Text = "MyTunes - " + nowLbl.Text;
         if (record) {
             histPos++;
             if (histPos < history.Count) history.RemoveRange(histPos, history.Count - histPos);
