@@ -110,8 +110,9 @@ class MainForm : Form {
     MenuStrip menu;
     StatusStrip status;
     ToolStripMenuItem mDark, mScan, mExit, mUndo, mRedo, mCut, mCopy, mPaste, mSelAll, mFind;
-    Panel bar;
+    Panel bar, header;
     FlowLayoutPanel flow;
+    Label titleLbl;
 
     readonly Dictionary<string, ListViewGroup> groups = new Dictionary<string, ListViewGroup>();
     readonly TrackSorter sorter = new TrackSorter();
@@ -132,13 +133,13 @@ class MainForm : Form {
     static Font IconFont;
 
     // Glyph -> Bitmap fuer Menue-Icons (Menüs nehmen keine Font-Zeichen)
-    static Bitmap Glyph(char c, Color col) {
-        var bmp = new Bitmap(16, 16);
+    static Bitmap Glyph(char c, Color col, int size = 16) {
+        var bmp = new Bitmap(size, size);
         using (var g = Graphics.FromImage(bmp)) {
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
             var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            using (var f = new Font(iconFam, 11f))
-                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0, 0, 16, 16), fmt);
+            using (var f = new Font(iconFam, size * 0.7f))
+                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0, 0, size, size), fmt);
         }
         return bmp;
     }
@@ -164,7 +165,7 @@ class MainForm : Form {
 
         Text = "MyTunes"; Width = 1100; Height = 750; StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9f); KeyPreview = true;
-        try { Icon = Icon.ExtractAssociatedIcon(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "wmplayer.exe")); } catch { }
+        // Icon wird unten aus dem Logo-Glyph gesetzt
 
         lv = new ListView {
             Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false,
@@ -194,6 +195,16 @@ class MainForm : Form {
         statusLbl = new ToolStripStatusLabel();
         status.Items.Add(statusLbl);
         Controls.Add(status);
+
+        // Header mit Logo (muss vor menu.Controls.Add -> dockt unter dem Menü)
+        var logoBmp = Glyph('\uF001', SystemColors.Highlight, 32);
+        Icon = (Icon)Icon.FromHandle(logoBmp.GetHicon()).Clone();   // Taskleisten-/Fenster-Icon
+        header = new Panel { Dock = DockStyle.Top, Height = 46 };
+        titleLbl = new Label { Text = "MyTunes", Font = new Font("Segoe UI Semibold", 15f),
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0) };
+        header.Controls.Add(titleLbl);
+        header.Controls.Add(new PictureBox { Image = logoBmp, Width = 50, Dock = DockStyle.Left, SizeMode = PictureBoxSizeMode.CenterImage });
+        Controls.Add(header);
 
         menu = new MenuStrip();
         var mDatei = new ToolStripMenuItem("Datei");
@@ -491,6 +502,7 @@ class MainForm : Form {
         BackColor = ctl;
         lv.BackColor = bg; lv.ForeColor = fg;
         bar.BackColor = ctl; flow.BackColor = ctl; seek.BackColor = ctl; vol.BackColor = ctl;
+        header.BackColor = ctl; titleLbl.ForeColor = fg;
         nowLbl.ForeColor = fg; timeLbl.ForeColor = fg; volIco.ForeColor = fg;
         status.BackColor = ctl; statusLbl.BackColor = ctl; statusLbl.ForeColor = fg;
         menu.BackColor = ctl; menu.ForeColor = fg;
