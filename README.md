@@ -36,6 +36,8 @@ Musik-Pfad steht oben in `MyTunes.cs` (`const string Root`), aktuell:
 G:\Meine Ablage\Synchronized\iTunes reduced Copy\iTunes Media\Music
 ```
 
+- **Icons**: Font Awesome Free (`fonts/fa-solid-900.ttf`, SIL OFL), zur Laufzeit ohne Installation geladen; Menü-Icons werden als Bitmaps gerendert
+
 ## Hinweise
 
 - Scan-Geschwindigkeit hängt am Dateisystem (Drive-Stream langsam, synchronisiert schnell).

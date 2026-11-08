@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Drawing;
+using System.Drawing.Text;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -108,7 +109,7 @@ class MainForm : Form {
     SeekBar seek;
     MenuStrip menu;
     StatusStrip status;
-    ToolStripMenuItem mDark;
+    ToolStripMenuItem mDark, mScan, mExit, mUndo, mRedo, mCut, mCopy, mPaste, mSelAll, mFind;
     Panel bar;
     FlowLayoutPanel flow;
 
@@ -127,9 +128,40 @@ class MainForm : Form {
     readonly Timer uiTimer = new Timer { Interval = 500 };
     bool seeking;
 
-    static readonly Font IconFont = new Font("Segoe MDL2 Assets", 11f);
+    static FontFamily iconFam;
+    static Font IconFont;
+
+    // Glyph -> Bitmap fuer Menue-Icons (Menüs nehmen keine Font-Zeichen)
+    static Bitmap Glyph(char c, Color col) {
+        var bmp = new Bitmap(16, 16);
+        using (var g = Graphics.FromImage(bmp)) {
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            using (var f = new Font(iconFam, 11f))
+                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0, 0, 16, 16), fmt);
+        }
+        return bmp;
+    }
+
+    void SetIcons(Color col) {
+        mScan.Image = Glyph('\uF021', col); mExit.Image = Glyph('\uF08B', col);
+        mUndo.Image = Glyph('\uF0E2', col); mRedo.Image = Glyph('\uF01E', col);
+        mCut.Image  = Glyph('\uF0C4', col); mCopy.Image = Glyph('\uF0C5', col);
+        mPaste.Image = Glyph('\uF328', col);
+        mSelAll.Image = Glyph('\uF14A', col); mFind.Image = Glyph('\uF002', col);
+        mDark.Image = Glyph('\uF186', col);
+        statusLbl.Image = Glyph('\uF001', col);
+    }
 
     public MainForm() {
+        var fontPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fonts", "fa-solid-900.ttf");
+        if (File.Exists(fontPath)) {
+            var pfc = new PrivateFontCollection();
+            pfc.AddFontFile(fontPath);
+            iconFam = pfc.Families[0];
+        } else iconFam = new FontFamily("Segoe MDL2 Assets");   // Fallback
+        IconFont = new Font(iconFam, 11f);
+
         Text = "MyTunes"; Width = 1100; Height = 750; StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9f); KeyPreview = true;
         try { Icon = Icon.ExtractAssociatedIcon(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "wmplayer.exe")); } catch { }
@@ -142,11 +174,11 @@ class MainForm : Form {
         Controls.Add(lv);
 
         // --- Player-Leiste unten ---
-        btnPrev = NewBtn('\uE76B');
-        btnPlay = NewBtn('\uE768');
-        btnNext = NewBtn('\uE76C');
+        btnPrev = NewBtn('\uF048');
+        btnPlay = NewBtn('\uF04B');
+        btnNext = NewBtn('\uF051');
         nowLbl = new Label { AutoSize = true, Padding = new Padding(14, 9, 0, 0), ForeColor = Color.DimGray };
-        volIco = new Label { Text = "\uE767", Font = IconFont, AutoSize = true, Padding = new Padding(14, 8, 0, 0) };
+        volIco = new Label { Text = "\uF028", Font = IconFont, AutoSize = true, Padding = new Padding(14, 8, 0, 0) };
         vol = new TrackBar { TickStyle = TickStyle.None, Width = 110 };
         vol.AutoSize = false; vol.Height = 30; vol.Maximum = 100; vol.Value = 80;
         timeLbl = new Label { AutoSize = true, Padding = new Padding(14, 9, 0, 0), ForeColor = Color.DimGray };
@@ -165,21 +197,21 @@ class MainForm : Form {
 
         menu = new MenuStrip();
         var mDatei = new ToolStripMenuItem("Datei");
-        mDatei.DropDownItems.Add(new ToolStripMenuItem("Medien neu scannen", null, (s, e) => StartJob(false, true), Keys.F5));
-        mDatei.DropDownItems.Add(new ToolStripMenuItem("Beenden", null, (s, e) => Close()));
+        mScan = new ToolStripMenuItem("Medien neu scannen", null, (s, e) => StartJob(false, true), Keys.F5);
+        mExit = new ToolStripMenuItem("Beenden", null, (s, e) => Close());
+        mDatei.DropDownItems.AddRange(new ToolStripItem[] { mScan, mExit });
         var mBearb = new ToolStripMenuItem("Bearbeiten");
+        mUndo   = new ToolStripMenuItem("Rückgängig", null, (s, e) => Undo(), Keys.Control | Keys.Z);
+        mRedo   = new ToolStripMenuItem("Wiederherstellen", null, (s, e) => Redo(), Keys.Control | Keys.Y);
+        mCut    = new ToolStripMenuItem("Ausschneiden", null, (s, e) => CopyTracks(true), Keys.Control | Keys.X);
+        mCopy   = new ToolStripMenuItem("Kopieren", null, (s, e) => CopyTracks(false), Keys.Control | Keys.C);
+        mPaste  = new ToolStripMenuItem("Einfügen", null, (s, e) => PasteTracks(), Keys.Control | Keys.V);
+        mSelAll = new ToolStripMenuItem("Alles auswählen", null, (s, e) => SelectAll(), Keys.Control | Keys.A);
+        mFind   = new ToolStripMenuItem("Seite durchsuchen...", null, (s, e) => SearchTracks(), Keys.Control | Keys.F);
         mBearb.DropDownItems.AddRange(new ToolStripItem[] {
-            new ToolStripMenuItem("Rückgängig", null, (s, e) => Undo(), Keys.Control | Keys.Z),
-            new ToolStripMenuItem("Wiederherstellen", null, (s, e) => Redo(), Keys.Control | Keys.Y),
-            new ToolStripSeparator(),
-            new ToolStripMenuItem("Ausschneiden", null, (s, e) => CopyTracks(true), Keys.Control | Keys.X),
-            new ToolStripMenuItem("Kopieren", null, (s, e) => CopyTracks(false), Keys.Control | Keys.C),
-            new ToolStripMenuItem("Einfügen", null, (s, e) => PasteTracks(), Keys.Control | Keys.V),
-            new ToolStripSeparator(),
-            new ToolStripMenuItem("Alles auswählen", null, (s, e) => SelectAll(), Keys.Control | Keys.A),
-            new ToolStripSeparator(),
-            new ToolStripMenuItem("Seite durchsuchen...", null, (s, e) => SearchTracks(), Keys.Control | Keys.F)
-        });
+            mUndo, mRedo, new ToolStripSeparator(),
+            mCut, mCopy, mPaste, new ToolStripSeparator(),
+            mSelAll, new ToolStripSeparator(), mFind });
         var mAnsicht = new ToolStripMenuItem("Ansicht");
         mDark = new ToolStripMenuItem("Dunkelmodus") { CheckOnClick = true };
         mDark.Click += (s, e) => SetDark(mDark.Checked);
@@ -230,7 +262,7 @@ class MainForm : Form {
         };
 
         uiTimer.Tick += (s, e) => {
-            btnPlay.Text = ((char)((int)wmp.playState == 3 ? 0xE769 : 0xE768)).ToString();
+            btnPlay.Text = ((char)((int)wmp.playState == 3 ? 0xF04C : 0xF04B)).ToString();
             double d = 0;
             try { if (wmp.currentMedia != null) d = wmp.currentMedia.duration; } catch { }
             if (d > 0) {
@@ -241,6 +273,7 @@ class MainForm : Form {
             }
         };
         uiTimer.Start();
+        SetIcons(SystemColors.WindowText);
 
         scanTimer.Tick += ScanTick;
         FormClosed += (s, e) => { scanTimer.Stop(); uiTimer.Stop(); try { wmp.close(); } catch { } };
@@ -469,6 +502,7 @@ class MainForm : Form {
         var r = on ? (ToolStripRenderer)new ToolStripProfessionalRenderer(new DarkTable())
                    : new ToolStripProfessionalRenderer();
         menu.Renderer = r; status.Renderer = r;
+        SetIcons(fg);
         seek.Invalidate();
     }
 }
