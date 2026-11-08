@@ -131,15 +131,36 @@ class MainForm : Form {
 
     static FontFamily iconFam;
     static Font IconFont;
+    static readonly Font Mdl2Font = new Font("Segoe MDL2 Assets", 13f);   // Player-Leiste behaelt MDL2-Look
 
     // Glyph -> Bitmap fuer Menue-Icons (Menüs nehmen keine Font-Zeichen)
+    // Glyph gross rendern, Tinten-Bounds messen, dann exakt einpassen -> nie abgeschnitten
     static Bitmap Glyph(char c, Color col, int size = 16) {
-        var bmp = new Bitmap(size, size);
-        using (var g = Graphics.FromImage(bmp)) {
+        var big = new Bitmap(size * 4, size * 4);
+        using (var g = Graphics.FromImage(big)) {
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
             var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            using (var f = new Font(iconFam, size * 0.6f))   // etwas kleiner -> Bearings schneiden nicht
-                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0.5f, 0.5f, size - 1, size - 1), fmt);
+            using (var f = new Font(iconFam, size * 1.5f))
+                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0, 0, big.Width, big.Height), fmt);
+        }
+        int x0 = big.Width, y0 = big.Height, x1 = -1, y1 = -1;
+        for (int y = 0; y < big.Height; y++)
+            for (int x = 0; x < big.Width; x++)
+                if (big.GetPixel(x, y).A > 16) {
+                    if (x < x0) x0 = x; if (x > x1) x1 = x;
+                    if (y < y0) y0 = y; if (y > y1) y1 = y;
+                }
+        var bmp = new Bitmap(size, size);
+        if (x1 >= 0) {
+            float pad = Math.Max(1f, size * 0.06f);
+            float w = x1 - x0 + 1, h = y1 - y0 + 1;
+            float s = Math.Min((size - 2 * pad) / w, (size - 2 * pad) / h);
+            float dw = w * s, dh = h * s;
+            using (var g2 = Graphics.FromImage(bmp)) {
+                g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                g2.DrawImage(big, new RectangleF((size - dw) / 2, (size - dh) / 2, dw, dh),
+                             new RectangleF(x0, y0, w, h), GraphicsUnit.Pixel);
+            }
         }
         return bmp;
     }
@@ -179,11 +200,11 @@ class MainForm : Form {
         Controls.Add(lv);
 
         // --- Player-Leiste unten ---
-        btnPrev = NewBtn('\uF048');
-        btnPlay = NewBtn('\uF04B');
-        btnNext = NewBtn('\uF051');
+        btnPrev = NewBtn('\uE76B');
+        btnPlay = NewBtn('\uE768');
+        btnNext = NewBtn('\uE76C');
         nowLbl = new Label { AutoSize = true, Padding = new Padding(16, 11, 0, 0), ForeColor = Color.DimGray };
-        volIco = new Label { Text = "\uF028", Font = IconFont, AutoSize = true, Padding = new Padding(16, 9, 0, 0) };
+        volIco = new Label { Text = "\uE767", Font = Mdl2Font, AutoSize = true, Padding = new Padding(16, 9, 0, 0) };
         vol = new TrackBar { TickStyle = TickStyle.None, Width = 120 };
         vol.AutoSize = false; vol.Height = 34; vol.Maximum = 100; vol.Value = 80;
         timeLbl = new Label { AutoSize = true, Padding = new Padding(16, 11, 0, 0), ForeColor = Color.DimGray };
@@ -277,7 +298,7 @@ class MainForm : Form {
         };
 
         uiTimer.Tick += (s, e) => {
-            btnPlay.Text = ((char)((int)wmp.playState == 3 ? 0xF04C : 0xF04B)).ToString();
+            btnPlay.Text = ((char)((int)wmp.playState == 3 ? 0xE769 : 0xE768)).ToString();
             double d = 0;
             try { if (wmp.currentMedia != null) d = wmp.currentMedia.duration; } catch { }
             if (d > 0) {
@@ -298,7 +319,7 @@ class MainForm : Form {
     }
 
     Button NewBtn(char c) {
-        return new Button { Width = 50, Height = 38, Font = IconFont, Text = c.ToString(), FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 } };
+        return new Button { Width = 50, Height = 38, Font = Mdl2Font, Text = c.ToString(), FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 } };
     }
 
     // ---------- Tracks/Parsing ----------
