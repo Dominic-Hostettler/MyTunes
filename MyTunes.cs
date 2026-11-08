@@ -99,6 +99,7 @@ class MainForm : Form {
     const string Root = @"G:\Meine Ablage\Synchronized\iTunes reduced Copy\iTunes Media\Music";
     static readonly string[] Exts = { ".mp3", ".m4a", ".aac", ".m4p", ".wav", ".flac", ".wma", ".aif", ".aiff" };
     readonly string Cache = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tracks.txt");
+    readonly string WinFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "window.txt");
 
     ListView lv;
     dynamic wmp;
@@ -183,7 +184,8 @@ class MainForm : Form {
         } else iconFam = new FontFamily("Segoe MDL2 Assets");   // Fallback
         IconFont = new Font(iconFam, 13f);
 
-        Text = "MyTunes"; Width = 1100; Height = 750; StartPosition = FormStartPosition.CenterScreen;
+        Text = "MyTunes"; Width = 1280; Height = 840; StartPosition = FormStartPosition.CenterScreen;
+        MinimumSize = new Size(860, 540);
         Font = new Font("Segoe UI", 9f); KeyPreview = true;
         // Icon wird unten aus dem Logo-Glyph gesetzt
 
@@ -311,6 +313,16 @@ class MainForm : Form {
 
         scanTimer.Tick += ScanTick;
         FormClosed += (s, e) => { scanTimer.Stop(); uiTimer.Stop(); try { wmp.close(); } catch { } };
+        FormClosing += (s, e) => {
+            var r = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == FormWindowState.Maximized ? ",max" : "")); } catch { }
+        };
+        try {
+            var p = File.ReadAllText(WinFile).Split(',');
+            var r = new Rectangle(int.Parse(p[0]), int.Parse(p[1]), int.Parse(p[2]), int.Parse(p[3]));
+            if (SystemInformation.VirtualScreen.IntersectsWith(r)) { StartPosition = FormStartPosition.Manual; Bounds = r; }
+            if (p.Length > 4 && p[4] == "max") WindowState = FormWindowState.Maximized;
+        } catch { }
 
         hadCache = File.Exists(Cache);
         StartJob(hadCache, true);   // Cache sofort, Scan immer im Hintergrund
