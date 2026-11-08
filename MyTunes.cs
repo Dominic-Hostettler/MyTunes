@@ -138,8 +138,8 @@ class MainForm : Form {
         using (var g = Graphics.FromImage(bmp)) {
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
             var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            using (var f = new Font(iconFam, size * 0.7f))
-                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0, 0, size, size), fmt);
+            using (var f = new Font(iconFam, size * 0.6f))   // etwas kleiner -> Bearings schneiden nicht
+                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0.5f, 0.5f, size - 1, size - 1), fmt);
         }
         return bmp;
     }
@@ -161,7 +161,7 @@ class MainForm : Form {
             pfc.AddFontFile(fontPath);
             iconFam = pfc.Families[0];
         } else iconFam = new FontFamily("Segoe MDL2 Assets");   // Fallback
-        IconFont = new Font(iconFam, 11f);
+        IconFont = new Font(iconFam, 13f);
 
         Text = "MyTunes"; Width = 1100; Height = 750; StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9f); KeyPreview = true;
@@ -171,22 +171,26 @@ class MainForm : Form {
             Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false,
             ListViewItemSorter = sorter
         };
-        lv.Columns.Add("#", 40); lv.Columns.Add("Titel", 420); lv.Columns.Add("Interpret", 260); lv.Columns.Add("Album", 260);
+        // hoehere Zeilen via ImageList-Trick
+        var il = new ImageList { ImageSize = new Size(1, 24), ColorDepth = ColorDepth.Depth32Bit };
+        il.Images.Add(new Bitmap(1, 24));
+        lv.SmallImageList = il;
+        lv.Columns.Add("#", 50); lv.Columns.Add("Titel", 440); lv.Columns.Add("Interpret", 270); lv.Columns.Add("Album", 270);
         Controls.Add(lv);
 
         // --- Player-Leiste unten ---
         btnPrev = NewBtn('\uF048');
         btnPlay = NewBtn('\uF04B');
         btnNext = NewBtn('\uF051');
-        nowLbl = new Label { AutoSize = true, Padding = new Padding(14, 9, 0, 0), ForeColor = Color.DimGray };
-        volIco = new Label { Text = "\uF028", Font = IconFont, AutoSize = true, Padding = new Padding(14, 8, 0, 0) };
-        vol = new TrackBar { TickStyle = TickStyle.None, Width = 110 };
-        vol.AutoSize = false; vol.Height = 30; vol.Maximum = 100; vol.Value = 80;
-        timeLbl = new Label { AutoSize = true, Padding = new Padding(14, 9, 0, 0), ForeColor = Color.DimGray };
-        flow = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(8, 3, 0, 0), WrapContents = false };
+        nowLbl = new Label { AutoSize = true, Padding = new Padding(16, 11, 0, 0), ForeColor = Color.DimGray };
+        volIco = new Label { Text = "\uF028", Font = IconFont, AutoSize = true, Padding = new Padding(16, 9, 0, 0) };
+        vol = new TrackBar { TickStyle = TickStyle.None, Width = 120 };
+        vol.AutoSize = false; vol.Height = 34; vol.Maximum = 100; vol.Value = 80;
+        timeLbl = new Label { AutoSize = true, Padding = new Padding(16, 11, 0, 0), ForeColor = Color.DimGray };
+        flow = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(10, 5, 0, 0), WrapContents = false };
         flow.Controls.AddRange(new Control[] { btnPrev, btnPlay, btnNext, nowLbl, volIco, vol, timeLbl });
-        seek = new SeekBar { Dock = DockStyle.Top, Height = 24 };
-        bar = new Panel { Dock = DockStyle.Bottom, Height = 76 };
+        seek = new SeekBar { Dock = DockStyle.Top, Height = 30 };
+        bar = new Panel { Dock = DockStyle.Bottom, Height = 92 };
         bar.Controls.Add(flow);
         bar.Controls.Add(seek);
         Controls.Add(bar);
@@ -197,13 +201,13 @@ class MainForm : Form {
         Controls.Add(status);
 
         // Header mit Logo (muss vor menu.Controls.Add -> dockt unter dem Menü)
-        var logoBmp = Glyph('\uF001', SystemColors.Highlight, 32);
+        var logoBmp = Glyph('\uF001', SystemColors.Highlight, 36);
         Icon = (Icon)Icon.FromHandle(logoBmp.GetHicon()).Clone();   // Taskleisten-/Fenster-Icon
-        header = new Panel { Dock = DockStyle.Top, Height = 46 };
-        titleLbl = new Label { Text = "MyTunes", Font = new Font("Segoe UI Semibold", 15f),
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0) };
+        header = new Panel { Dock = DockStyle.Top, Height = 56 };
+        titleLbl = new Label { Text = "MyTunes", Font = new Font("Segoe UI Semibold", 17f),
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
         header.Controls.Add(titleLbl);
-        header.Controls.Add(new PictureBox { Image = logoBmp, Width = 50, Dock = DockStyle.Left, SizeMode = PictureBoxSizeMode.CenterImage });
+        header.Controls.Add(new PictureBox { Image = logoBmp, Width = 60, Dock = DockStyle.Left, SizeMode = PictureBoxSizeMode.CenterImage });
         Controls.Add(header);
 
         menu = new MenuStrip();
@@ -294,7 +298,7 @@ class MainForm : Form {
     }
 
     Button NewBtn(char c) {
-        return new Button { Width = 44, Height = 32, Font = IconFont, Text = c.ToString(), FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 } };
+        return new Button { Width = 50, Height = 38, Font = IconFont, Text = c.ToString(), FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 } };
     }
 
     // ---------- Tracks/Parsing ----------
