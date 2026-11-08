@@ -12,8 +12,12 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 static class Program {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool SetProcessDPIAware();   // sonst skaliert Windows die App unscharf hoch
+
     [STAThread]
     static void Main() {
+        SetProcessDPIAware();
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new MainForm());
