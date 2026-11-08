@@ -112,7 +112,7 @@ class MainForm : Form {
     ToolStripMenuItem mDark, mScan, mExit, mUndo, mRedo, mCut, mCopy, mPaste, mSelAll, mFind;
     Panel bar, header;
     FlowLayoutPanel flow;
-    Label titleLbl;
+    Label titleLbl, subLbl;
 
     readonly Dictionary<string, ListViewGroup> groups = new Dictionary<string, ListViewGroup>();
     readonly TrackSorter sorter = new TrackSorter();
@@ -193,8 +193,8 @@ class MainForm : Form {
             ListViewItemSorter = sorter
         };
         // hoehere Zeilen via ImageList-Trick
-        var il = new ImageList { ImageSize = new Size(1, 24), ColorDepth = ColorDepth.Depth32Bit };
-        il.Images.Add(new Bitmap(1, 24));
+        var il = new ImageList { ImageSize = new Size(1, 26), ColorDepth = ColorDepth.Depth32Bit };
+        il.Images.Add(new Bitmap(1, 26));
         lv.SmallImageList = il;
         lv.Columns.Add("#", 50); lv.Columns.Add("Titel", 440); lv.Columns.Add("Interpret", 270); lv.Columns.Add("Album", 270);
         Controls.Add(lv);
@@ -224,12 +224,14 @@ class MainForm : Form {
         // Header mit Logo (muss vor menu.Controls.Add -> dockt unter dem Menü)
         var logoBmp = Glyph('\uF001', SystemColors.Highlight, 36);
         Icon = (Icon)Icon.FromHandle(logoBmp.GetHicon()).Clone();   // Taskleisten-/Fenster-Icon
-        header = new Panel { Dock = DockStyle.Top, Height = 56 };
-        titleLbl = new Label { Text = "MyTunes", Font = new Font("Segoe UI Semibold", 17f),
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
-        header.Controls.Add(titleLbl);
-        header.Controls.Add(new PictureBox { Image = logoBmp, Width = 60, Dock = DockStyle.Left, SizeMode = PictureBoxSizeMode.CenterImage });
-        Controls.Add(header);
+        header = new Panel { Dock = DockStyle.Top, Height = 60 };
+        titleLbl = new Label { Text = "MyTunes", Font = new Font("Segoe UI Semibold", 17f), AutoSize = true, Padding = new Padding(10, 14, 0, 0) };
+        subLbl = new Label { Text = "Media Library", ForeColor = Color.Gray, AutoSize = true, Padding = new Padding(10, 22, 0, 0) };
+        var hflow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+        hflow.Controls.Add(titleLbl);
+        hflow.Controls.Add(subLbl);
+        header.Controls.Add(hflow);
+        header.Controls.Add(new PictureBox { Image = logoBmp, Width = 64, Dock = DockStyle.Left, SizeMode = PictureBoxSizeMode.CenterImage });
 
         menu = new MenuStrip();
         var mDatei = new ToolStripMenuItem("Datei");
@@ -254,7 +256,14 @@ class MainForm : Form {
         mAnsicht.DropDownItems.Add(mDark);
         menu.Items.AddRange(new ToolStripItem[] { mDatei, mBearb, mAnsicht });
         MainMenuStrip = menu;
+        menu.Padding = new Padding(6, 2, 0, 2);
         Controls.Add(menu);
+        Controls.Add(header);   // spaeter hinzugefuegt -> dockt oberhalb des Menüs
+
+        // feine Trennlinien unter Header und ueber der Player-Leiste
+        Func<Color> sepCol = () => darkOn ? Color.FromArgb(62, 62, 66) : Color.FromArgb(224, 224, 224);
+        header.Paint += (s, e) => { using (var b = new SolidBrush(sepCol())) e.Graphics.FillRectangle(b, 0, header.Height - 1, header.Width, 1); };
+        bar.Paint += (s, e) => { using (var b = new SolidBrush(sepCol())) e.Graphics.FillRectangle(b, 0, 0, bar.Width, 1); };
 
         wmp = Activator.CreateInstance(Type.GetTypeFromProgID("WMPlayer.OCX"));
         wmp.settings.volume = 80;
@@ -319,7 +328,8 @@ class MainForm : Form {
     }
 
     Button NewBtn(char c) {
-        return new Button { Width = 50, Height = 38, Font = Mdl2Font, Text = c.ToString(), FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 } };
+        return new Button { Width = 50, Height = 38, Font = Mdl2Font, Text = c.ToString(), FlatStyle = FlatStyle.Flat,
+            FlatAppearance = { BorderSize = 0, MouseOverBackColor = Color.FromArgb(45, SystemColors.Highlight) } };
     }
 
     // ---------- Tracks/Parsing ----------
@@ -527,7 +537,7 @@ class MainForm : Form {
         BackColor = ctl;
         lv.BackColor = bg; lv.ForeColor = fg;
         bar.BackColor = ctl; flow.BackColor = ctl; seek.BackColor = ctl; vol.BackColor = ctl;
-        header.BackColor = ctl; titleLbl.ForeColor = fg;
+        header.BackColor = ctl; titleLbl.ForeColor = fg; subLbl.ForeColor = on ? Color.Gray : Color.DimGray;
         nowLbl.ForeColor = fg; timeLbl.ForeColor = fg; volIco.ForeColor = fg;
         status.BackColor = ctl; statusLbl.BackColor = ctl; statusLbl.ForeColor = fg;
         menu.BackColor = ctl; menu.ForeColor = fg;
