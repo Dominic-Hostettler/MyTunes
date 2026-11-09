@@ -138,6 +138,10 @@ public class MainWindow : Window {
         mBearb.Items.Add(MI('\uF14A', S("Alles auswählen", "Select all"), "Strg+A", () => lv.SelectAll()));
         mBearb.Items.Add(MI('\uF002', S("Seite durchsuchen...", "Search..."), "Strg+F", () => SearchTracks()));
         mBearb.Items.Add(MI('\uF061', S("Zum gespielten Track", "Go to playing track"), "Strg+L", () => RevealPlaying()));
+        mBearb.Items.Add(MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
+            var t = lv.SelectedItem as Track;
+            if (t != null) ShowInfo(t);
+        }));
         var mAnsicht = new MenuItem { Header = S("Ansicht", "View") };
         mDark = new MenuItem { Header = S("Dunkelmodus", "Dark mode"), IsCheckable = true };
         mDark.Checked += (s, e) => SetDark(true);
@@ -424,6 +428,7 @@ public class MainWindow : Window {
                 case Key.A: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { lv.SelectAll(); e.Handled = true; } break;
                 case Key.F: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) SearchTracks(); break;
                 case Key.L: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { RevealPlaying(); e.Handled = true; } break;
+                case Key.I: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { var t = lv.SelectedItem as Track; if (t != null) ShowInfo(t); e.Handled = true; } break;
             }
         };
 
@@ -1258,16 +1263,22 @@ public class MainWindow : Window {
             Grid.SetRow(l, i); Grid.SetRow(v, i); Grid.SetColumn(v, 1);
             g.Children.Add(l); g.Children.Add(v);
         }
-        var sv = new Button { Content = S("Speichern", "Save"), Padding = new Thickness(14, 4, 14, 4), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0), Cursor = Cursors.Hand };
+        var sv = new Button { Content = S("Speichern", "Save"), Padding = new Thickness(14, 4, 14, 4), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0), Cursor = Cursors.Hand, IsEnabled = false };
+        Action upd = () => sv.IsEnabled = edit["T"].Text != t.Title || edit["I"].Text != t.Artist || edit["A"].Text != t.Album ||
+            edit["AA"].Text != (t.TagAlbumArtist ?? "") || edit["N"].Text != t.Num || edit["J"].Text != (t.Jahr ?? "") ||
+            edit["G"].Text != (t.Genre ?? "") || edit["F"].Text != t.File;
+        foreach (var v in edit.Values) v.TextChanged += (s, e) => upd();
         sv.Click += (s, e) => SaveTrackTags(t, edit["T"].Text, edit["A"].Text, edit["AA"].Text, edit["N"].Text, edit["F"].Text, edit["I"].Text, edit["J"].Text, edit["G"].Text);
+        var ack = new TextBlock { Foreground = Acc, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 10, 0) };
+        var br = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        br.Children.Add(ack); br.Children.Add(sv);
         g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(sv, rows.Length); Grid.SetColumn(sv, 1);
-        g.Children.Add(sv);
-        if (infoAck != null) {   // kurze Save-Bestaetigung unterm Button
-            var ack = new TextBlock { Text = infoAck, Foreground = Acc, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
-            Grid.SetRow(ack, rows.Length); g.Children.Add(ack);
+        Grid.SetRow(br, rows.Length); Grid.SetColumn(br, 1);
+        g.Children.Add(br);
+        if (infoAck != null) {   // kurze Save-Bestaetigung links vom Button
+            ack.Text = infoAck;
             var tm = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-            tm.Tick += (s2, e2) => { tm.Stop(); g.Children.Remove(ack); };
+            tm.Tick += (s2, e2) => { tm.Stop(); ack.Text = ""; };
             tm.Start();
             infoAck = null;
         }
