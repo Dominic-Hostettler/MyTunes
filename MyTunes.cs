@@ -1,390 +1,312 @@
-// MyTunes - iTunes-aehnliche Liste fuer "iTunes Media\Music"
-// Artist/Album/Titel kommen aus der Ordnerstruktur (Interpret\Album\NN Titel.ext)
+// MyTunes - Musik-Browser fuer "iTunes Media\Music" (WPF, single-file, csc.exe)
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Drawing;
-using System.Drawing.Text;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using Path = System.IO.Path;
+using System.Windows.Threading;
 
 static class Program {
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    static extern bool SetProcessDPIAware();   // sonst skaliert Windows die App unscharf hoch
-
     [STAThread]
-    static void Main() {
-        SetProcessDPIAware();
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new MainForm());
-    }
+    static void Main() { new Application().Run(new MainWindow()); }
 }
 
-class Track {
+public class Track {
     public string Num, Title, Artist, Album, Path;
     public bool Cached;
+    public string AlbumKey { get { return Artist + " - " + Album; } }
 }
 
-class TrackSorter : IComparer {
-    public int Col; public bool Asc = true;
-    static string S(ListViewItem i, int c) { return c == 0 ? i.Text : i.SubItems[c].Text; }
-    static int Cmp(ListViewItem x, ListViewItem y, int c, bool num) {
-        if (num) {
-            int xi, yi;
-            bool ox = int.TryParse(S(x, c), out xi), oy = int.TryParse(S(y, c), out yi);
-            if (ox && oy) return xi.CompareTo(yi);
-            if (ox != oy) return ox ? -1 : 1;
-        }
-        return string.Compare(S(x, c), S(y, c), StringComparison.CurrentCultureIgnoreCase);
-    }
-    public int Compare(object a, object b) {
-        var x = (ListViewItem)a; var y = (ListViewItem)b;
-        int c = Cmp(x, y, Col, Col == 0);
-        if (c == 0 && Col != 3) c = Cmp(x, y, 3, false); // Tie-Break: Album
-        if (c == 0 && Col != 0) c = Cmp(x, y, 0, true);  // dann Tracknr
-        return Asc ? c : -c;
-    }
-}
-
-class DarkTable : ProfessionalColorTable {
-    static readonly Color B = Color.FromArgb(45,45,48), S = Color.FromArgb(62,62,66);
-    public override Color ToolStripDropDownBackground { get { return B; } }
-    public override Color ImageMarginGradientBegin { get { return B; } }
-    public override Color ImageMarginGradientMiddle { get { return B; } }
-    public override Color ImageMarginGradientEnd { get { return B; } }
-    public override Color MenuItemSelected { get { return S; } }
-    public override Color MenuItemBorder { get { return S; } }
-    public override Color MenuBorder { get { return S; } }
-    public override Color MenuItemSelectedGradientBegin { get { return S; } }
-    public override Color MenuItemSelectedGradientEnd { get { return S; } }
-    public override Color MenuItemPressedGradientBegin { get { return S; } }
-    public override Color MenuItemPressedGradientEnd { get { return S; } }
-    public override Color SeparatorDark { get { return S; } }
-    public override Color ToolStripBorder { get { return S; } }
-    public override Color MenuStripGradientBegin { get { return B; } }
-    public override Color MenuStripGradientEnd { get { return B; } }
-    public override Color ToolStripGradientBegin { get { return B; } }
-    public override Color ToolStripGradientMiddle { get { return B; } }
-    public override Color ToolStripGradientEnd { get { return B; } }
-    public override Color StatusStripGradientBegin { get { return B; } }
-    public override Color StatusStripGradientEnd { get { return B; } }
-}
-
-class SeekBar : Panel {
-    public double Frac;
-    public Color TrackColor = Color.Empty, FillColor = Color.Empty;
-    public event Action<double> Seeked;
-    public SeekBar() { DoubleBuffered = true; Cursor = Cursors.Hand; }
-    void Set(int x) {
-        Frac = Math.Max(0.0, Math.Min(1.0, x / (double)Width));
-        Invalidate();
-        if (Seeked != null) Seeked(Frac);
-    }
-    protected override void OnMouseDown(MouseEventArgs e) {
-        base.OnMouseDown(e); Capture = true; Set(e.X);
-    }
-    protected override void OnMouseMove(MouseEventArgs e) {
-        base.OnMouseMove(e);
-        if (e.Button == MouseButtons.Left) Set(e.X);
-    }
-    protected override void OnPaint(PaintEventArgs e) {
-        var g = e.Graphics; int y = Height / 2 - 2;
-        var track = TrackColor.IsEmpty ? (Brush)SystemBrushes.ControlLight : new SolidBrush(TrackColor);
-        g.FillRectangle(track, 0, y, Width, 4);
-        int fill = (int)(Width * Frac);
-        var fb = FillColor.IsEmpty ? (Brush)SystemBrushes.Highlight : new SolidBrush(FillColor);
-        g.FillRectangle(fb, 0, y, fill, 4);
-        g.FillEllipse(fb, Math.Max(0, fill - 5), y - 3, 10, 10);
-    }
-}
-
-class MainForm : Form {
+public class MainWindow : Window {
     const string Root = @"G:\Meine Ablage\Synchronized\iTunes reduced Copy\iTunes Media\Music";
     static readonly string[] Exts = { ".mp3", ".m4a", ".aac", ".m4p", ".wav", ".flac", ".wma", ".aif", ".aiff" };
     readonly string Cache = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tracks.txt");
     readonly string WinFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "window.txt");
 
-    ListView lv;
+    readonly List<Track> items = new List<Track>();
+    ICollectionView view;
+    ListView lv; GridView gv;
     dynamic wmp;
     Button btnPrev, btnPlay, btnNext;
-    Label nowLbl, timeLbl, volIco;
-    ToolStripStatusLabel statusLbl;
-    TrackBar vol;
-    SeekBar seek;
-    MenuStrip menu;
-    StatusStrip status;
-    ToolStripMenuItem mDark, mScan, mExit, mUndo, mRedo, mCut, mCopy, mPaste, mSelAll, mFind;
-    Panel bar;
-    FlowLayoutPanel flow;
+    TextBlock nowLbl, timeLbl, statusLbl, statusIcon;
+    Slider vol;
+    Grid seek; Border seekFill, seekTrack, bar;
+    Ellipse seekThumb;
+    Menu menu; StatusBar sb;
+    FontFamily fa;
 
-    readonly Dictionary<string, ListViewGroup> groups = new Dictionary<string, ListViewGroup>();
-    readonly TrackSorter sorter = new TrackSorter();
-    readonly List<ListViewItem> history = new List<ListViewItem>();
+    readonly List<Track> history = new List<Track>();
     int histPos = -1;
+    bool darkOn, seeking, scanDone, scanning;
 
-    // Hintergrund-Scan
     ConcurrentQueue<Track> queue = new ConcurrentQueue<Track>();
     readonly List<Track> scanned = new List<Track>();
     readonly List<Track> pending = new List<Track>();
-    volatile bool scanDone, scanning;
-    bool hadCache;
-    readonly Timer scanTimer = new Timer { Interval = 200 };
-    readonly Timer uiTimer = new Timer { Interval = 500 };
-    bool seeking;
+    readonly DispatcherTimer scanTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+    readonly DispatcherTimer uiTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
 
-    static FontFamily iconFam;
-    static Font IconFont;
-    static readonly Font Mdl2Font = new Font("Segoe MDL2 Assets", 13f);   // Player-Leiste behaelt MDL2-Look
+    // Palette (Dark/Light)
+    Color BgC, FgC, CtlC, SepC, AccC, DimC;
+    SolidColorBrush Bg, Fg, Ctl, Sep, Acc, Dim;
 
-    // Glyph -> Bitmap fuer Menue-Icons (Menüs nehmen keine Font-Zeichen)
-    // Glyph gross rendern, Tinten-Bounds messen, dann exakt einpassen -> nie abgeschnitten
-    static Bitmap Glyph(char c, Color col, int size = 16) {
-        var big = new Bitmap(size * 4, size * 4);
-        using (var g = Graphics.FromImage(big)) {
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            using (var f = new Font(iconFam, size * 1.5f))
-                g.DrawString(c.ToString(), f, new SolidBrush(col), new RectangleF(0, 0, big.Width, big.Height), fmt);
-        }
-        int x0 = big.Width, y0 = big.Height, x1 = -1, y1 = -1;
-        for (int y = 0; y < big.Height; y++)
-            for (int x = 0; x < big.Width; x++)
-                if (big.GetPixel(x, y).A > 16) {
-                    if (x < x0) x0 = x; if (x > x1) x1 = x;
-                    if (y < y0) y0 = y; if (y > y1) y1 = y;
-                }
-        var bmp = new Bitmap(size, size);
-        if (x1 >= 0) {
-            float pad = Math.Max(1f, size * 0.06f);
-            float w = x1 - x0 + 1, h = y1 - y0 + 1;
-            float s = Math.Min((size - 2 * pad) / w, (size - 2 * pad) / h);
-            float dw = w * s, dh = h * s;
-            using (var g2 = Graphics.FromImage(bmp)) {
-                g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                g2.DrawImage(big, new RectangleF((size - dw) / 2, (size - dh) / 2, dw, dh),
-                             new RectangleF(x0, y0, w, h), GraphicsUnit.Pixel);
-            }
-        }
-        return bmp;
-    }
+    public MainWindow() {
+        Title = "MyTunes"; Width = 1280; Height = 840; MinWidth = 860; MinHeight = 540;
+        FontFamily = new FontFamily("Segoe UI"); FontSize = 13;
+        LoadBounds();
 
-    void SetIcons(Color col) {
-        mScan.Image = Glyph('\uF021', col); mExit.Image = Glyph('\uF08B', col);
-        mUndo.Image = Glyph('\uF0E2', col); mRedo.Image = Glyph('\uF01E', col);
-        mCut.Image  = Glyph('\uF0C4', col); mCopy.Image = Glyph('\uF0C5', col);
-        mPaste.Image = Glyph('\uF328', col);
-        mSelAll.Image = Glyph('\uF14A', col); mFind.Image = Glyph('\uF002', col);
-        mDark.Image = Glyph('\uF186', col);
-        statusLbl.Image = Glyph('\uF001', col);
-    }
-
-    public MainForm() {
         var fontPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fonts", "fa-solid-900.ttf");
-        if (File.Exists(fontPath)) {
-            var pfc = new PrivateFontCollection();
-            pfc.AddFontFile(fontPath);
-            iconFam = pfc.Families[0];
-        } else iconFam = new FontFamily("Segoe MDL2 Assets");   // Fallback
-        IconFont = new Font(iconFam, 13f);
-
-        Text = "MyTunes"; Width = 1280; Height = 840; StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(860, 540);
-        Font = new Font("Segoe UI", 9f); KeyPreview = true;
-        // Icon wird unten aus dem Logo-Glyph gesetzt
-
-        lv = new ListView {
-            Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false,
-            ListViewItemSorter = sorter
-        };
-        // hoehere Zeilen via ImageList-Trick
-        var il = new ImageList { ImageSize = new Size(1, 26), ColorDepth = ColorDepth.Depth32Bit };
-        il.Images.Add(new Bitmap(1, 26));
-        lv.SmallImageList = il;
-        lv.Columns.Add("#", 50); lv.Columns.Add("Titel", 440); lv.Columns.Add("Interpret", 270); lv.Columns.Add("Album", 270);
-        Controls.Add(lv);
-
-        // --- Player-Leiste unten ---
-        btnPrev = NewBtn('\uE76B');
-        btnPlay = NewBtn('\uE768');
-        btnNext = NewBtn('\uE76C');
-        nowLbl = new Label { AutoSize = true, Padding = new Padding(18, 14, 0, 0), ForeColor = Color.DimGray };
-        volIco = new Label { Text = "\uE767", Font = Mdl2Font, AutoSize = true, Padding = new Padding(18, 11, 0, 0) };
-        vol = new TrackBar { TickStyle = TickStyle.None, Width = 140 };
-        vol.AutoSize = false; vol.Height = 40; vol.Maximum = 100; vol.Value = 80;
-        timeLbl = new Label { AutoSize = true, Padding = new Padding(18, 14, 0, 0), ForeColor = Color.DimGray };
-        flow = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12, 8, 0, 0), WrapContents = false };
-        flow.Controls.AddRange(new Control[] { btnPrev, btnPlay, btnNext, nowLbl, volIco, vol, timeLbl });
-        seek = new SeekBar { Dock = DockStyle.Top, Height = 36 };
-        bar = new Panel { Dock = DockStyle.Bottom, Height = 108 };
-        bar.Controls.Add(flow);
-        bar.Controls.Add(seek);
-        Controls.Add(bar);
-
-        status = new StatusStrip();
-        statusLbl = new ToolStripStatusLabel();
-        status.Items.Add(statusLbl);
-        Controls.Add(status);
-
-        // Fenster-/Taskleisten-Icon aus Glyph
-        var logoBmp = Glyph('\uF001', SystemColors.Highlight, 36);
-        Icon = (Icon)Icon.FromHandle(logoBmp.GetHicon()).Clone();   // Taskleisten-/Fenster-Icon
-
-        menu = new MenuStrip();
-        var mDatei = new ToolStripMenuItem("Datei");
-        mScan = new ToolStripMenuItem("Medien neu scannen", null, (s, e) => StartJob(false, true), Keys.F5);
-        mExit = new ToolStripMenuItem("Beenden", null, (s, e) => Close());
-        mDatei.DropDownItems.AddRange(new ToolStripItem[] { mScan, mExit });
-        var mBearb = new ToolStripMenuItem("Bearbeiten");
-        mUndo   = new ToolStripMenuItem("Rückgängig", null, (s, e) => Undo(), Keys.Control | Keys.Z);
-        mRedo   = new ToolStripMenuItem("Wiederherstellen", null, (s, e) => Redo(), Keys.Control | Keys.Y);
-        mCut    = new ToolStripMenuItem("Ausschneiden", null, (s, e) => CopyTracks(true), Keys.Control | Keys.X);
-        mCopy   = new ToolStripMenuItem("Kopieren", null, (s, e) => CopyTracks(false), Keys.Control | Keys.C);
-        mPaste  = new ToolStripMenuItem("Einfügen", null, (s, e) => PasteTracks(), Keys.Control | Keys.V);
-        mSelAll = new ToolStripMenuItem("Alles auswählen", null, (s, e) => SelectAll(), Keys.Control | Keys.A);
-        mFind   = new ToolStripMenuItem("Seite durchsuchen...", null, (s, e) => SearchTracks(), Keys.Control | Keys.F);
-        mBearb.DropDownItems.AddRange(new ToolStripItem[] {
-            mUndo, mRedo, new ToolStripSeparator(),
-            mCut, mCopy, mPaste, new ToolStripSeparator(),
-            mSelAll, new ToolStripSeparator(), mFind });
-        var mAnsicht = new ToolStripMenuItem("Ansicht");
-        mDark = new ToolStripMenuItem("Dunkelmodus") { CheckOnClick = true };
-        mDark.Click += (s, e) => SetDark(mDark.Checked);
-        mAnsicht.DropDownItems.Add(mDark);
-        menu.Items.AddRange(new ToolStripItem[] { mDatei, mBearb, mAnsicht });
-        MainMenuStrip = menu;
-        menu.Padding = new Padding(6, 2, 0, 2);
-        Controls.Add(menu);
-
-        // feine Trennlinie ueber der Player-Leiste
-        Func<Color> sepCol = () => darkOn ? Color.FromArgb(62, 62, 66) : Color.FromArgb(224, 224, 224);
-        bar.Paint += (s, e) => { using (var b = new SolidBrush(sepCol())) e.Graphics.FillRectangle(b, 0, 0, bar.Width, 1); };
+        fa = File.Exists(fontPath)
+            ? new FontFamily(new Uri(AppDomain.CurrentDomain.BaseDirectory), "./fonts/#Font Awesome 6 Free Solid")
+            : new FontFamily("Segoe MDL2 Assets");
+        Icon = RenderIcon('\uF001', System.Windows.Media.Color.FromRgb(0, 120, 215), 64);
 
         wmp = Activator.CreateInstance(Type.GetTypeFromProgID("WMPlayer.OCX"));
         wmp.settings.volume = 80;
 
-        // --- Events ---
-        KeyDown += (s, e) => {
-            switch (e.KeyCode) {
-                case Keys.Right: Step(1); e.SuppressKeyPress = true; break;
-                case Keys.Left: PrevOrRestart(); e.SuppressKeyPress = true; break;
-                case Keys.Enter: if (lv.SelectedItems.Count > 0) PlayItem(lv.SelectedItems[0]); e.SuppressKeyPress = true; break;
-                case Keys.Space: TogglePlay(); e.SuppressKeyPress = true; break;
+        var dock = new DockPanel();
+        Content = dock;
+
+        // --- Menü ---
+        menu = new Menu();
+        var mDatei = new MenuItem { Header = "Datei" };
+        mDatei.Items.Add(MI('\uF021', "Medien neu scannen", "F5", () => StartJob(false, true)));
+        mDatei.Items.Add(MI('\uF08B', "Beenden", null, () => Close()));
+        var mBearb = new MenuItem { Header = "Bearbeiten" };
+        mBearb.Items.Add(MI('\uF0E2', "Rückgängig", "Strg+Z", () => Undo()));
+        mBearb.Items.Add(MI('\uF01E', "Wiederherstellen", "Strg+Y", () => Redo()));
+        mBearb.Items.Add(new Separator());
+        mBearb.Items.Add(MI('\uF0C4', "Ausschneiden", "Strg+X", () => CopyTracks(true)));
+        mBearb.Items.Add(MI('\uF0C5', "Kopieren", "Strg+C", () => CopyTracks(false)));
+        mBearb.Items.Add(MI('\uF328', "Einfügen", "Strg+V", () => PasteTracks()));
+        mBearb.Items.Add(new Separator());
+        mBearb.Items.Add(MI('\uF14A', "Alles auswählen", "Strg+A", () => lv.SelectAll()));
+        mBearb.Items.Add(new Separator());
+        mBearb.Items.Add(MI('\uF002', "Seite durchsuchen...", "Strg+F", () => SearchTracks()));
+        var mAnsicht = new MenuItem { Header = "Ansicht" };
+        var mDark = new MenuItem { Header = "Dunkelmodus", IsCheckable = true };
+        mDark.Checked += (s, e) => SetDark(true);
+        mDark.Unchecked += (s, e) => SetDark(false);
+        mAnsicht.Items.Add(MI('\uF186', "Dunkelmodus", null, () => mDark.IsChecked = !mDark.IsChecked));
+        menu.Items.Add(mDatei); menu.Items.Add(mBearb); menu.Items.Add(mAnsicht);
+        DockPanel.SetDock(menu, Dock.Top);
+        dock.Children.Add(menu);
+
+        // --- Statuszeile unten ---
+        statusLbl = new TextBlock { Padding = new Thickness(6, 2, 6, 2) };
+        statusIcon = new TextBlock { Text = "\uF001", FontFamily = fa, Margin = new Thickness(0, 0, 6, 0) };
+        sb = new StatusBar();
+        sb.Items.Add(new StatusBarItem { Content = new StackPanel { Orientation = Orientation.Horizontal,
+            Children = { statusIcon, statusLbl } } });
+        DockPanel.SetDock(sb, Dock.Bottom);
+        dock.Children.Add(sb);
+
+        // --- Player-Leiste unten ---
+        seek = new Grid { Height = 34, Cursor = Cursors.Hand };
+        seekTrack = new Border { Height = 5, CornerRadius = new CornerRadius(2.5), VerticalAlignment = VerticalAlignment.Center };
+        seekFill = new Border { Height = 5, CornerRadius = new CornerRadius(2.5), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
+        seekThumb = new Ellipse { Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-6, 0, 0, 0) };
+        seek.Children.Add(seekTrack); seek.Children.Add(seekFill); seek.Children.Add(seekThumb);
+        DockPanel.SetDock(seek, Dock.Top);
+
+        btnPrev = Btn('\uF048'); btnPlay = Btn('\uF04B'); btnNext = Btn('\uF051');
+        btnPrev.Click += (s, e) => PrevOrRestart();
+        btnPlay.Click += (s, e) => TogglePlay();
+        btnNext.Click += (s, e) => Step(1);
+        nowLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0), Foreground = Brushes.Gray };
+        var volIco = new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 6, 0) };
+        vol = new Slider { Maximum = 100, Value = 80, Width = 140, VerticalAlignment = VerticalAlignment.Center };
+        vol.ValueChanged += (s, e) => wmp.settings.volume = (int)vol.Value;
+        timeLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0), Foreground = Brushes.Gray };
+        var barTop = new DockPanel();
+        DockPanel.SetDock(seek, Dock.Top);
+        barTop.Children.Add(seek);
+        var barFlow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 6, 0, 6) };
+        foreach (var c in new UIElement[] { btnPrev, btnPlay, btnNext, nowLbl, volIco, vol, timeLbl }) barFlow.Children.Add(c);
+        barTop.Children.Add(barFlow);
+        bar = new Border { Child = barTop, Padding = new Thickness(0), BorderThickness = new Thickness(0, 1, 0, 0) };
+        DockPanel.SetDock(bar, Dock.Bottom);
+        dock.Children.Add(bar);
+        bar.BorderBrush = Sep = NewBrush(SepC = Color.FromRgb(224, 224, 224));
+
+        // --- Liste ---
+        gv = new GridView();
+        gv.Columns.Add(new GridViewColumn { Header = "#", Width = 55, DisplayMemberBinding = new Binding("Num") });
+        gv.Columns.Add(new GridViewColumn { Header = "Titel", Width = 450, DisplayMemberBinding = new Binding("Title") });
+        gv.Columns.Add(new GridViewColumn { Header = "Interpret", Width = 270, DisplayMemberBinding = new Binding("Artist") });
+        gv.Columns.Add(new GridViewColumn { Header = "Album", Width = 270, DisplayMemberBinding = new Binding("Album") });
+        lv = new ListView { View = gv, ItemsSource = items, SelectionMode = SelectionMode.Extended };
+        view = CollectionViewSource.GetDefaultView(items);
+        lv.GroupStyle.Add(new GroupStyle());
+        lv.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler(OnHeaderClick));
+        lv.MouseDoubleClick += (s, e) => { if (lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };
+        lv.PreviewKeyDown += (s, e) => {
+            if (e.Key == Key.Enter && lv.SelectedItem != null) { PlayItem((Track)lv.SelectedItem); e.Handled = true; }
+        };
+        lv.PreviewMouseLeftButtonDown += (s, e) => dragStart = e.GetPosition(lv);
+        lv.PreviewMouseMove += (s, e) => {
+            if (e.LeftButton == MouseButtonState.Pressed && lv.SelectedItems.Count > 0 &&
+                (e.GetPosition(lv) - dragStart).Length > 6) {
+                var col = new StringCollection();
+                col.AddRange(lv.SelectedItems.Cast<Track>().Select(t => t.Path).ToArray());
+                var d = new System.Windows.DataObject(); d.SetFileDropList(col);
+                DragDrop.DoDragDrop(lv, d, System.Windows.DragDropEffects.Copy);
             }
         };
-        btnPrev.Click += (s, e) => { PrevOrRestart(); lv.Focus(); };
-        btnNext.Click += (s, e) => { Step(1); lv.Focus(); };
-        btnPlay.Click += (s, e) => { TogglePlay(); lv.Focus(); };
-        vol.ValueChanged += (s, e) => wmp.settings.volume = vol.Value;
-        seek.Seeked += f => {
-            try {
-                if (wmp.currentMedia != null) {
-                    double d = wmp.currentMedia.duration;
-                    if (d > 0) wmp.controls.currentPosition = d * f;
-                }
-            } catch { }
-        };
-        seek.MouseDown += (s, e) => seeking = true;
-        seek.MouseUp += (s, e) => seeking = false;
-        lv.DoubleClick += (s, e) => { if (lv.SelectedItems.Count > 0) PlayItem(lv.SelectedItems[0]); };
-        lv.ColumnClick += (s, e) => {
-            if (sorter.Col == e.Column) sorter.Asc = !sorter.Asc;
-            else { sorter.Col = e.Column; sorter.Asc = true; }
-            lv.ShowGroups = e.Column == 3;   // Gruppierung nur bei Album-Sortierung
-            lv.Sort();
-        };
-        lv.ItemDrag += (s, e) => {
-            var paths = lv.SelectedItems.Cast<ListViewItem>().Select(i => (string)i.Tag).ToArray();
-            if (paths.Length == 0) { var it = e.Item as ListViewItem; if (it != null) paths = new[] { (string)it.Tag }; }
-            var col = new StringCollection(); col.AddRange(paths);
-            var d = new DataObject(); d.SetFileDropList(col);
-            lv.DoDragDrop(d, DragDropEffects.Copy);   // nur Copy -> Explorer verschiebt nie
+        dock.Children.Add(lv);
+
+        // --- Tasten ---
+        KeyDown += (s, e) => {
+            switch (e.Key) {
+                case Key.Right: Step(1); e.Handled = true; break;
+                case Key.Left: PrevOrRestart(); e.Handled = true; break;
+                case Key.Space: TogglePlay(); e.Handled = true; break;
+                case Key.F5: StartJob(false, true); e.Handled = true; break;
+                case Key.Z: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Undo(); break;
+                case Key.Y: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Redo(); break;
+                case Key.X: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) CopyTracks(true); break;
+                case Key.C: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) CopyTracks(false); break;
+                case Key.V: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) PasteTracks(); break;
+                case Key.A: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { lv.SelectAll(); e.Handled = true; } break;
+                case Key.F: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) SearchTracks(); break;
+            }
         };
 
+        // --- Seek-Interaktion ---
+        seek.MouseLeftButtonDown += (s, e) => { seeking = true; seek.CaptureMouse(); SeekTo(e.GetPosition(seek).X); };
+        seek.MouseMove += (s, e) => { if (seeking) SeekTo(e.GetPosition(seek).X); };
+        seek.MouseLeftButtonUp += (s, e) => { seeking = false; seek.ReleaseMouseCapture(); SeekTo(e.GetPosition(seek).X); };
+
         uiTimer.Tick += (s, e) => {
-            btnPlay.Text = ((char)((int)wmp.playState == 3 ? 0xE769 : 0xE768)).ToString();
+            btnPlay.Content = Glyph((int)wmp.playState == 3 ? '\uF04C' : '\uF04B');
             double d = 0;
             try { if (wmp.currentMedia != null) d = wmp.currentMedia.duration; } catch { }
             if (d > 0) {
                 double p = wmp.controls.currentPosition;
-                if (!seeking) { seek.Frac = p / d; seek.Invalidate(); }
-                timeLbl.Text = string.Format("{0:mm\\:ss} / {1:mm\\:ss}",
-                    TimeSpan.FromSeconds(p), TimeSpan.FromSeconds(d));
+                if (!seeking) SetSeekFrac(p / d);
+                timeLbl.Text = TimeSpan.FromSeconds(p).ToString(@"mm\:ss") + " / " + TimeSpan.FromSeconds(d).ToString(@"mm\:ss");
             }
         };
         uiTimer.Start();
-        SetIcons(SystemColors.WindowText);
-
         scanTimer.Tick += ScanTick;
-        FormClosed += (s, e) => { scanTimer.Stop(); uiTimer.Stop(); try { wmp.close(); } catch { } };
-        FormClosing += (s, e) => {
-            var r = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
-            try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == FormWindowState.Maximized ? ",max" : "")); } catch { }
-        };
-        try {
-            var p = File.ReadAllText(WinFile).Split(',');
-            var r = new Rectangle(int.Parse(p[0]), int.Parse(p[1]), int.Parse(p[2]), int.Parse(p[3]));
-            if (SystemInformation.VirtualScreen.IntersectsWith(r)) { StartPosition = FormStartPosition.Manual; Bounds = r; }
-            if (p.Length > 4 && p[4] == "max") WindowState = FormWindowState.Maximized;
-        } catch { }
+        Closing += (s, e) => SaveBounds();
+        Closed += (s, e) => { try { wmp.close(); } catch { } };
 
+        SetDark(false);
         hadCache = File.Exists(Cache);
-        StartJob(hadCache, true);   // Cache sofort, Scan immer im Hintergrund
+        StartJob(hadCache, true);
     }
 
-    Button NewBtn(char c) {
-        return new Button { Width = 56, Height = 44, Font = Mdl2Font, Text = c.ToString(), FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderSize = 0, MouseOverBackColor = Color.FromArgb(45, SystemColors.Highlight) } };
+    // ---------- UI-Helfer ----------
+    SolidColorBrush NewBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+
+    Button Btn(char c) {
+        var b = new Button { Content = Glyph(c), Width = 52, Height = 40, Margin = new Thickness(0, 0, 4, 0) };
+        var tpl = new ControlTemplate(typeof(Button));
+        var bd = new FrameworkElementFactory(typeof(Border));
+        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
+        bd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+        cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        bd.AppendChild(cp);
+        tpl.VisualTree = bd;
+        var trig = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        trig.Setters.Add(new Setter(Button.BackgroundProperty, NewBrush(Color.FromArgb(45, 0, 120, 215))));
+        tpl.Triggers.Add(trig);
+        b.Template = tpl; b.Background = Brushes.Transparent;
+        return b;
     }
 
-    // ---------- Tracks/Parsing ----------
-    static Track Parse(string fullName, bool cached) {
+    TextBlock Glyph(char c) { return new TextBlock { Text = c.ToString(), FontFamily = fa, FontSize = 15 }; }
+
+    MenuItem MI(char c, string text, string key, Action act) {
+        var p = new StackPanel { Orientation = Orientation.Horizontal };
+        p.Children.Add(new TextBlock { Text = c.ToString(), FontFamily = fa, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center });
+        p.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+        var mi = new MenuItem { Header = p, InputGestureText = key };
+        if (act != null) mi.Click += (s, e) => act();
+        return mi;
+    }
+    void SetItemColors(MenuItem mi, Brush bg, Brush fg) {
+        mi.Background = bg; mi.Foreground = fg;
+        foreach (var c in mi.Items) { var s = c as MenuItem; if (s != null) SetItemColors(s, bg, fg); }
+    }
+
+    BitmapSource RenderIcon(char c, Color col, int size) {
+        var ft = new FormattedText(c.ToString(), System.Globalization.CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight, new Typeface(fa, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+            size * 0.62, new SolidColorBrush(col), 96);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen()) dc.DrawText(ft, new System.Windows.Point((size - ft.Width) / 2, (size - ft.Height) / 2));
+        var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv); rtb.Freeze();
+        return rtb;
+    }
+
+    void SetSeekFrac(double f) {
+        f = Math.Max(0, Math.Min(1, f));
+        double w = seek.ActualWidth;
+        seekFill.Width = f * w;
+        seekThumb.Margin = new Thickness(Math.Max(0, f * w - 6), 0, 0, 0);
+    }
+    void SeekTo(double x) {
+        if (seek.ActualWidth <= 0) return;
+        double f = Math.Max(0, Math.Min(1, x / seek.ActualWidth));
+        SetSeekFrac(f);
+        try { if (wmp.currentMedia != null) { double d = wmp.currentMedia.duration; if (d > 0) wmp.controls.currentPosition = d * f; } } catch { }
+    }
+
+    void OnHeaderClick(object s, RoutedEventArgs e) {
+        var h = e.OriginalSource as GridViewColumnHeader;
+        if (h == null || h.Column == null) return;
+        var view = (ListCollectionView)CollectionViewSource.GetDefaultView(items);
+        view.SortDescriptions.Clear();
+        var col = h.Column.Header.ToString();
+        var prop = col == "#" ? "Num" : col == "Titel" ? "Title" : col == "Interpret" ? "Artist" : "Album";
+        var dir = ListSortDirection.Ascending;
+        if (lastSort == prop) dir = lastAsc ? ListSortDirection.Descending : ListSortDirection.Ascending;
+        lastSort = prop; lastAsc = dir == ListSortDirection.Ascending;
+        view.SortDescriptions.Add(new SortDescription(prop, dir));
+        if (prop != "Album") view.SortDescriptions.Add(new SortDescription("Album", ListSortDirection.Ascending));
+        if (prop != "Num") view.SortDescriptions.Add(new SortDescription("Num", ListSortDirection.Ascending));
+        if (prop == "Album") { if (view.GroupDescriptions.Count == 0) view.GroupDescriptions.Add(new PropertyGroupDescription("AlbumKey")); }
+        else view.GroupDescriptions.Clear();
+    }
+    string lastSort; bool lastAsc;
+
+    // ---------- Scan/Cache ----------
+    Track Parse(string fullName, bool cached) {
         var rel = fullName.Substring(Root.Length).TrimStart('\\').Split('\\');
-        var title = Path.GetFileNameWithoutExtension(fullName); var num = "";
+        var title = System.IO.Path.GetFileNameWithoutExtension(fullName); var num = "";
         var m = System.Text.RegularExpressions.Regex.Match(title, @"^(\d+)\s+(.+)$");
         if (m.Success) { num = m.Groups[1].Value; title = m.Groups[2].Value; }
-        return new Track {
-            Num = num, Title = title, Artist = rel[0],
-            Album = rel.Length >= 3 ? rel[1] : "", Path = fullName, Cached = cached
-        };
+        return new Track { Num = num, Title = title, Artist = rel[0], Album = rel.Length >= 3 ? rel[1] : "", Path = fullName, Cached = cached };
     }
 
-    static IEnumerable<string> EnumFiles(string root) {
+    IEnumerable<string> EnumFiles(string root) {
         var stack = new Stack<string>(); stack.Push(root);
         while (stack.Count > 0) {
             var dir = stack.Pop();
             string[] files; try { files = Directory.GetFiles(dir); } catch { continue; }
-            foreach (var f in files)
-                if (Exts.Contains(Path.GetExtension(f).ToLowerInvariant())) yield return f;
+            foreach (var f in files) if (Exts.Contains(Path.GetExtension(f).ToLowerInvariant())) yield return f;
             string[] subs; try { subs = Directory.GetDirectories(dir); } catch { continue; }
             foreach (var sd in subs) stack.Push(sd);
         }
     }
 
-    ListViewItem NewItem(Track t) {
-        var key = t.Artist + " - " + t.Album;
-        ListViewGroup g;
-        if (!groups.TryGetValue(key, out g)) { g = new ListViewGroup(key); lv.Groups.Add(g); groups[key] = g; }
-        var it = new ListViewItem(t.Num);
-        it.SubItems.Add(t.Title); it.SubItems.Add(t.Artist); it.SubItems.Add(t.Album);
-        it.Tag = t.Path; it.Group = g;
-        return it;
-    }
-
-    void BuildList(List<Track> tracks) {
-        lv.BeginUpdate();
-        lv.Items.Clear(); lv.Groups.Clear(); groups.Clear();
-        lv.Items.AddRange(tracks.Select(NewItem).ToArray());
-        lv.EndUpdate();
-        lv.Sort();
-    }
-
-    // ---------- Hintergrund-Scan ----------
     void StartJob(bool doCache, bool doScan) {
         if (scanning) return;
         scanning = true; scanDone = false;
@@ -392,14 +314,14 @@ class MainForm : Form {
         queue = new ConcurrentQueue<Track>();
         Task.Run(() => {
             try {
-                if (doCache && File.Exists(Cache))
-                    foreach (var line in File.ReadLines(Cache)) queue.Enqueue(Parse(line, true));
-                if (doScan)
-                    foreach (var f in EnumFiles(Root)) queue.Enqueue(Parse(f, false));
+                if (doCache && File.Exists(Cache)) foreach (var l in File.ReadLines(Cache)) queue.Enqueue(Parse(l, true));
+                if (doScan) foreach (var f in EnumFiles(Root)) queue.Enqueue(Parse(f, false));
             } finally { scanDone = true; }
         });
         scanTimer.Start();
     }
+    bool hadCache;
+    Point dragStart;
 
     void ScanTick(object s, EventArgs e) {
         Track t;
@@ -407,15 +329,13 @@ class MainForm : Form {
             if (t.Cached || !hadCache) pending.Add(t);
             if (!t.Cached) scanned.Add(t);
         }
-        int limit = lv.Items.Count > 0 ? 2000 : 400;   // erster Chunk frueh sichtbar
+        int limit = items.Count > 0 ? 2000 : 400;
         if (pending.Count >= limit || (scanDone && pending.Count > 0)) {
-            lv.BeginUpdate();
-            lv.Items.AddRange(pending.Select(NewItem).ToArray());
+            items.AddRange(pending);
+            view.Refresh();
             pending.Clear();
-            lv.EndUpdate();
         }
-        statusLbl.Text = scanning ? lv.Items.Count + " Tracks (scanne... " + scanned.Count + ")"
-                                  : lv.Items.Count + " Tracks";
+        statusLbl.Text = scanning ? items.Count + " Tracks (scanne... " + scanned.Count + ")" : items.Count + " Tracks";
         if (scanDone && queue.IsEmpty) {
             scanTimer.Stop();
             if (scanned.Count > 0) {
@@ -423,46 +343,36 @@ class MainForm : Form {
                 File.WriteAllLines(Cache, scanned.Select(x => x.Path));
             }
             scanning = false;
-            statusLbl.Text = lv.Items.Count + " Tracks";
-            SetGroupColor(darkOn ? Color.FromArgb(96, 150, 255) : Color.FromArgb(85, 85, 85));
+            statusLbl.Text = items.Count + " Tracks";
         }
     }
 
     void MergeDiff() {
         var scanPaths = new HashSet<string>(scanned.Select(x => x.Path));
-        var havePaths = new HashSet<string>(lv.Items.Cast<ListViewItem>().Select(i => (string)i.Tag));
-        lv.BeginUpdate();
-        foreach (var it in lv.Items.Cast<ListViewItem>().ToArray())
-            if (!scanPaths.Contains((string)it.Tag)) lv.Items.Remove(it);
-        foreach (var t in scanned)
-            if (!havePaths.Contains(t.Path)) lv.Items.Add(NewItem(t));
-        lv.EndUpdate();
-        lv.Sort();
+        var have = new HashSet<string>(items.Select(i => i.Path));
+        items.RemoveAll(it => !scanPaths.Contains(it.Path));
+        foreach (var t in scanned) if (!have.Contains(t.Path)) items.Add(t);
+        view.Refresh();
     }
 
     // ---------- Wiedergabe ----------
-    void PlayItem(ListViewItem it, bool record = true) {
-        if (it == null) return;
-        foreach (ListViewItem i in lv.SelectedItems) i.Selected = false;
-        it.Selected = true; it.Focused = true; it.EnsureVisible();
-        wmp.URL = (string)it.Tag;
-        seek.Frac = 0;
-        nowLbl.Text = it.SubItems[2].Text + " - " + it.SubItems[1].Text;
+    void PlayItem(Track t, bool record = true) {
+        if (t == null) return;
+        lv.SelectedItem = t; lv.ScrollIntoView(t);
+        wmp.URL = t.Path;
+        SetSeekFrac(0);
+        nowLbl.Text = t.Artist + " - " + t.Title;
         if (record) {
             histPos++;
             if (histPos < history.Count) history.RemoveRange(histPos, history.Count - histPos);
-            history.Add(it);
+            history.Add(t);
         }
     }
 
     void Step(int d) {
-        // sichtbare Reihenfolge: bei Gruppierung Gruppen der Reihe nach, sonst Items
-        var ordered = new List<ListViewItem>();
-        if (lv.ShowGroups && lv.Groups.Count > 0)
-            foreach (ListViewGroup g in lv.Groups) foreach (ListViewItem it in g.Items) ordered.Add(it);
-        else
-            foreach (ListViewItem it in lv.Items) ordered.Add(it);
-        int cur = lv.SelectedItems.Count > 0 ? ordered.IndexOf(lv.SelectedItems[0]) : -1;
+        var view = CollectionViewSource.GetDefaultView(items);
+        var ordered = view.Cast<Track>().ToList();
+        int cur = lv.SelectedItem != null ? ordered.IndexOf((Track)lv.SelectedItem) : -1;
         int n = cur >= 0 ? cur + d : 0;
         if (n >= 0 && n < ordered.Count) PlayItem(ordered[n]);
     }
@@ -471,171 +381,108 @@ class MainForm : Form {
         if ((double)wmp.controls.currentPosition > 0.5) wmp.controls.currentPosition = 0;
         else Step(-1);
     }
-
     void TogglePlay() {
         if ((int)wmp.playState == 3) wmp.controls.pause();
         else if (wmp.currentMedia != null) wmp.controls.play();
-        else if (lv.SelectedItems.Count > 0) PlayItem(lv.SelectedItems[0]);
+        else if (lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem);
     }
-
-    void Undo() {
-        if (histPos > 0 && history[histPos - 1].ListView != null) { histPos--; PlayItem(history[histPos], false); }
-    }
-    void Redo() {
-        if (histPos < history.Count - 1 && history[histPos + 1].ListView != null) { histPos++; PlayItem(history[histPos], false); }
-    }
+    void Undo() { if (histPos > 0 && items.Contains(history[histPos - 1])) { histPos--; PlayItem(history[histPos], false); } }
+    void Redo() { if (histPos < history.Count - 1 && items.Contains(history[histPos + 1])) { histPos++; PlayItem(history[histPos], false); } }
 
     // ---------- Bearbeiten ----------
     void CopyTracks(bool cut) {
-        var paths = lv.SelectedItems.Cast<ListViewItem>().Select(i => (string)i.Tag).ToArray();
+        var paths = lv.SelectedItems.Cast<Track>().Select(t => t.Path).ToArray();
         if (paths.Length == 0) return;
         var col = new StringCollection(); col.AddRange(paths);
-        var d = new DataObject(); d.SetFileDropList(col);
-        var ms = new MemoryStream(); ms.WriteByte((byte)(cut ? 2 : 5));   // Preferred DropEffect: 2=Move, 5=Copy
+        var d = new System.Windows.DataObject(); d.SetFileDropList(col);
+        var ms = new MemoryStream(); ms.WriteByte((byte)(cut ? 2 : 5));
         d.SetData("Preferred DropEffect", ms);
         Clipboard.SetDataObject(d);
     }
-
     void PasteTracks() {
         var cdo = Clipboard.GetDataObject();
-        if (!cdo.GetDataPresent(DataFormats.FileDrop)) return;
-        var dest = lv.SelectedItems.Count > 0 ? Path.GetDirectoryName((string)lv.SelectedItems[0].Tag) : Root;
+        if (!cdo.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
+        var dest = lv.SelectedItem != null ? Path.GetDirectoryName(((Track)lv.SelectedItem).Path) : Root;
         bool move = false;
         try { move = (((MemoryStream)cdo.GetData("Preferred DropEffect")).ReadByte() & 2) != 0; } catch { }
-        foreach (var src in (string[])cdo.GetData(DataFormats.FileDrop)) {
+        foreach (var src in (string[])cdo.GetData(System.Windows.DataFormats.FileDrop)) {
             var target = Path.Combine(dest, Path.GetFileName(src));
-            try {
-                if (!File.Exists(target)) {
-                    if (move) File.Move(src, target); else File.Copy(src, target);
-                }
-            } catch { }
+            try { if (!File.Exists(target)) { if (move) File.Move(src, target); else File.Copy(src, target); } } catch { }
         }
         StartJob(false, true);
     }
-
-    void SelectAll() {
-        lv.BeginUpdate();
-        foreach (ListViewItem it in lv.Items) it.Selected = true;
-        lv.EndUpdate();
-    }
-
     void SearchTracks() {
-        var q = Microsoft.VisualBasic.Interaction.InputBox(
-            "Suchen nach (Titel, Interpret, Album):", "Medien durchsuchen");
+        var q = Microsoft.VisualBasic.Interaction.InputBox("Suchen nach (Titel, Interpret, Album):", "Medien durchsuchen");
         if (string.IsNullOrEmpty(q)) return;
         var q2 = q.ToLowerInvariant();
-        foreach (ListViewItem it in lv.Items) {
-            var hay = (it.SubItems[1].Text + " " + it.SubItems[2].Text + " " + it.SubItems[3].Text).ToLowerInvariant();
-            if (hay.Contains(q2)) {
-                foreach (ListViewItem i in lv.SelectedItems) i.Selected = false;
-                it.Selected = true; it.Focused = true; it.EnsureVisible();
-                return;
-            }
-        }
-        MessageBox.Show("Kein Treffer für '" + q + "'", "Medien durchsuchen");
+        var hit = items.FirstOrDefault(t => (t.Title + " " + t.Artist + " " + t.Album).ToLowerInvariant().Contains(q2));
+        if (hit != null) { lv.SelectedItem = hit; lv.ScrollIntoView(hit); }
+        else System.Windows.MessageBox.Show("Kein Treffer für '" + q + "'", "Medien durchsuchen");
     }
 
-    // ---------- Gruppen-Header Farbe (LVM_SETGROUPMETRICS) ----------
-    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, int w, ref LVGROUPMETRICS m);
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    struct LVGROUPMETRICS {
-        public uint cbSize, mask;
-        public IntPtr pszHeader; public uint cchHeader;
-        public IntPtr pszFooter; public uint cchFooter;
-        public int crHeader, crFooter, crTopEdge, crBottomEdge, crLeftEdge, crRightEdge;
-    }
-    void SetGroupColor(Color c) {
-        var m = new LVGROUPMETRICS { cbSize = (uint)Marshal.SizeOf(typeof(LVGROUPMETRICS)), mask = 4, crHeader = ColorTranslator.ToWin32(c) };
-        if (lv.IsHandleCreated) SendMessage(lv.Handle, 0x1093, 0, ref m);
-    }
-
-    // ---------- dunkle Spaltenkopfzeile (Header Custom Draw, nur im Darkmode) ----------
-    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
-    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, int w, ref HDITEM l);
-    [StructLayout(LayoutKind.Sequential)] struct NMHDR { public IntPtr hwndFrom; public UIntPtr idFrom; public int code; }
-    [StructLayout(LayoutKind.Sequential)]
-    struct NMCUSTOMDRAW { public NMHDR hdr; public int dwDrawStage; public IntPtr hdc; public RECT rc; public IntPtr dwItemSpec; public int uItemState; public IntPtr lItemlParam; }
-    [StructLayout(LayoutKind.Sequential)] struct RECT { public int left, top, right, bottom; }
-    [StructLayout(LayoutKind.Sequential)]
-    struct HDITEM { public uint mask; public int cxy; public IntPtr pszText; public IntPtr hbm; public int cchTextMax; public int fmt; public IntPtr lParam; public int iImage; public int iOrder; public uint type; public IntPtr pvFilter; public uint state; }
-
-    IntPtr hdrHwnd = IntPtr.Zero;
-    static readonly Color HdrBg = Color.FromArgb(45, 45, 48), HdrFg = Color.FromArgb(215, 215, 215), HdrSep = Color.FromArgb(70, 70, 75);
-
-    void DrawHeaderCustom(ref Message m) {
-        var cd = (NMCUSTOMDRAW)m.GetLParam(typeof(NMCUSTOMDRAW));
-        if (cd.dwDrawStage == 1) { m.Result = (IntPtr)0x20; return; }          // PREPAINT -> ITEMDRAW bitte
-        if (cd.dwDrawStage != 0x10001) return;                                 // CDDS_ITEMPREPAINT
-        var nm = (NMHDR)m.GetLParam(typeof(NMHDR));
-        using (var g = Graphics.FromHdc(cd.hdc)) {
-            var rc = Rectangle.FromLTRB(cd.rc.left, cd.rc.top, cd.rc.right, cd.rc.bottom);
-            using (var bg = new SolidBrush(HdrBg)) g.FillRectangle(bg, rc);
-            var buf = Marshal.AllocHGlobal(520);
-            try {
-                Marshal.WriteInt16(buf, 0);
-                var hdi = new HDITEM { mask = 2, pszText = buf, cchTextMax = 260 };
-                SendMessage(nm.hwndFrom, 0x1231 /*HDM_GETITEMTEXTW*/, (int)cd.dwItemSpec, ref hdi);
-                var txt = Marshal.PtrToStringUni(buf) ?? "";
-                var fmt = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
-                using (var fb = new SolidBrush(HdrFg))
-                    g.DrawString(txt, lv.Font, fb, new RectangleF(rc.Left + 6, rc.Top, rc.Width - 8, rc.Height), fmt);
-                using (var pb = new Pen(HdrSep)) {
-                    g.DrawLine(pb, rc.Right - 1, rc.Top + 4, rc.Right - 1, rc.Bottom - 4);
-                    g.DrawLine(pb, rc.Left, rc.Bottom - 1, rc.Right, rc.Bottom - 1);
-                }
-            } finally { Marshal.FreeHGlobal(buf); }
-        }
-        m.Result = (IntPtr)4;   // CDRF_SKIPDEFAULT
-    }
-
-    // ---------- groessere Resize-Greifzone (14px ins Fenster rein) ----------
-    protected override void WndProc(ref Message m) {
-        base.WndProc(ref m);
-        if (darkOn && m.Msg == 0x4E /*WM_NOTIFY*/) {
-            var nm = (NMHDR)m.GetLParam(typeof(NMHDR));
-            if (hdrHwnd == IntPtr.Zero && lv.IsHandleCreated) hdrHwnd = SendMessage(lv.Handle, 0x101F /*LVM_GETHEADER*/, IntPtr.Zero, IntPtr.Zero);
-            if (hdrHwnd != IntPtr.Zero && nm.hwndFrom == hdrHwnd && nm.code == -12 /*NM_CUSTOMDRAW*/) DrawHeaderCustom(ref m);
-        }
-        if (m.Msg == 0x84 /*WM_NCHITTEST*/ && m.Result == (IntPtr)1 /*HTCLIENT*/) {
-            const int g = 14;
-            var p = PointToClient(Cursor.Position);
-            bool l = p.X < g, r = p.X > ClientSize.Width - g, t = p.Y < g, b = p.Y > ClientSize.Height - g;
-            if      (b && l) m.Result = (IntPtr)16;   // BOTTOMLEFT
-            else if (b && r) m.Result = (IntPtr)17;   // BOTTOMRIGHT
-            else if (t && l) m.Result = (IntPtr)13;   // TOPLEFT
-            else if (t && r) m.Result = (IntPtr)14;   // TOPRIGHT
-            else if (l) m.Result = (IntPtr)10;        // LEFT
-            else if (r) m.Result = (IntPtr)11;        // RIGHT
-            else if (t) m.Result = (IntPtr)12;        // TOP
-            else if (b) m.Result = (IntPtr)15;        // BOTTOM
-        }
-    }
-
-    // ---------- Ansicht ----------
-    bool darkOn;
+    // ---------- Darkmode ----------
     void SetDark(bool on) {
         darkOn = on;
-        var bg = on ? Color.FromArgb(30, 30, 30) : SystemColors.Window;
-        var fg = on ? Color.FromArgb(220, 220, 220) : SystemColors.WindowText;
-        var ctl = on ? Color.FromArgb(45, 45, 48) : SystemColors.Control;
-        BackColor = ctl;
-        lv.BackColor = bg; lv.ForeColor = fg;
-        bar.BackColor = ctl; flow.BackColor = ctl; seek.BackColor = ctl; vol.BackColor = ctl;
-        nowLbl.ForeColor = fg; timeLbl.ForeColor = fg; volIco.ForeColor = fg;
-        status.BackColor = ctl; statusLbl.BackColor = ctl; statusLbl.ForeColor = fg;
-        menu.BackColor = ctl; menu.ForeColor = fg;
-        foreach (ToolStripMenuItem mi in menu.Items) {
-            mi.BackColor = ctl; mi.ForeColor = fg;
-            foreach (ToolStripItem d in mi.DropDownItems) { d.BackColor = ctl; d.ForeColor = fg; }
-        }
-        foreach (var b in new[] { btnPrev, btnPlay, btnNext }) { b.BackColor = ctl; b.ForeColor = fg; }
-        var r = on ? (ToolStripRenderer)new ToolStripProfessionalRenderer(new DarkTable())
-                   : new ToolStripProfessionalRenderer();
-        menu.Renderer = r; status.Renderer = r;
-        seek.TrackColor = on ? Color.FromArgb(62, 62, 66) : Color.Empty;
-        seek.FillColor = on ? Color.FromArgb(96, 150, 255) : Color.Empty;
-        SetGroupColor(on ? Color.FromArgb(96, 150, 255) : Color.FromArgb(85, 85, 85));
-        SetIcons(fg);
-        seek.Invalidate();
+        BgC = on ? Color.FromRgb(30, 30, 30) : Colors.White;
+        FgC = on ? Color.FromRgb(220, 220, 220) : Colors.Black;
+        CtlC = on ? Color.FromRgb(45, 45, 48) : Color.FromRgb(240, 240, 240);
+        SepC = on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(224, 224, 224);
+        AccC = on ? Color.FromRgb(96, 150, 255) : Color.FromRgb(0, 120, 215);
+        DimC = on ? Color.FromRgb(160, 160, 160) : Colors.Gray;
+        Bg = NewBrush(BgC); Fg = NewBrush(FgC); Ctl = NewBrush(CtlC); Sep = NewBrush(SepC); Acc = NewBrush(AccC); Dim = NewBrush(DimC);
+
+        Background = Ctl; Foreground = Fg;
+        lv.Background = Bg; lv.Foreground = Fg;
+        menu.Background = Ctl; menu.Foreground = Fg;
+        foreach (MenuItem top in menu.Items) SetItemColors(top, Ctl, Fg);
+        sb.Background = Ctl;
+        bar.Background = Ctl; bar.BorderBrush = Sep;
+        seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
+        seekFill.Background = Acc; seekThumb.Fill = Acc;
+        nowLbl.Foreground = Dim; timeLbl.Foreground = Dim;
+        statusLbl.Foreground = Fg; statusIcon.Foreground = Fg;
+        foreach (var b in new[] { btnPrev, btnPlay, btnNext }) b.Foreground = Fg;
+        // ListView: Zeilen, Selektion, Header und Gruppentitel einfaerben
+        lv.ItemContainerStyle = RowStyle();
+        var hstyle = new Style(typeof(GridViewColumnHeader));
+        hstyle.Setters.Add(new Setter(Control.BackgroundProperty, Ctl));
+        hstyle.Setters.Add(new Setter(Control.ForegroundProperty, Fg));
+        hstyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
+        gv.ColumnHeaderContainerStyle = hstyle;
+        var gs = lv.GroupStyle[0];
+        gs.HeaderTemplate = new DataTemplate();
+        var f = new FrameworkElementFactory(typeof(TextBlock));
+        f.SetBinding(TextBlock.TextProperty, new Binding("Name"));
+        f.SetValue(TextBlock.ForegroundProperty, Acc);
+        f.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+        f.SetValue(TextBlock.PaddingProperty, new Thickness(4, 10, 0, 4));
+        gs.HeaderTemplate.VisualTree = f;
+    }
+
+    Style RowStyle() {
+        var st = new Style(typeof(ListViewItem));
+        st.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 5, 6, 5)));
+        st.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+        var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 55, 60) : Color.FromRgb(229, 243, 255))));
+        st.Triggers.Add(hov);
+        var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
+        sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
+        st.Triggers.Add(sel);
+        return st;
+    }
+
+    // ---------- Fenster-Persistenz ----------
+    void SaveBounds() {
+        var r = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == WindowState.Maximized ? ",max" : "")); } catch { }
+    }
+    void LoadBounds() {
+        try {
+            var p = File.ReadAllText(WinFile).Split(',');
+            var r = new Rect(double.Parse(p[0]), double.Parse(p[1]), double.Parse(p[2]), double.Parse(p[3]));
+            if (SystemParameters.VirtualScreenWidth > 0) { Left = r.X; Top = r.Y; Width = r.Width; Height = r.Height; }
+            if (p.Length > 4 && p[4] == "max") WindowState = WindowState.Maximized;
+        } catch { }
     }
 }
