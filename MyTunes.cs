@@ -76,7 +76,7 @@ public class MainWindow : Window {
     ListView lv; GridView gv;
     dynamic wmp;
     Button btnPrev, btnPlay, btnNext;
-    TextBlock nowLbl, timeLbl, statusLbl;
+    TextBlock nowLbl, timeLbl, statusLbl, statusIco;
     Track playing;
     Grid seek, volBar;
     Border seekFill, seekTrack, bar, vFill, vTrack;
@@ -155,12 +155,14 @@ public class MainWindow : Window {
         mDark.Unchecked += (s, e) => SetDark(false);
         mAnsicht.Items.Add(MI('\uF186', S("Dunkelmodus", "Dark mode"), null, () => mDark.IsChecked = !mDark.IsChecked));
         menu.Items.Add(mDatei); menu.Items.Add(mBearb); menu.Items.Add(mAnsicht);
-        statusLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), TextAlignment = TextAlignment.Right };
+        statusLbl = new TextBlock { TextAlignment = TextAlignment.Right };
+        statusIco = new TextBlock { Text = "\uF1C0", FontFamily = fa, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), ToolTip = statusLbl };   // Status nur bei Hover
+        ToolTipService.SetInitialShowDelay(statusIco, 0);   // sofort, keine Verzoegerung
         topBar = new DockPanel { LastChildFill = false };
         menu.HorizontalAlignment = HorizontalAlignment.Left;
         DockPanel.SetDock(menu, Dock.Left);
-        DockPanel.SetDock(statusLbl, Dock.Right);
-        topBar.Children.Add(menu); topBar.Children.Add(statusLbl);
+        DockPanel.SetDock(statusIco, Dock.Right);
+        topBar.Children.Add(menu); topBar.Children.Add(statusIco);
         DockPanel.SetDock(topBar, Dock.Top);
         dock.Children.Add(topBar);
 
@@ -643,7 +645,7 @@ public class MainWindow : Window {
                         t.TagArtist = t.TagArtist ?? ""; t.TagTitle = t.TagTitle ?? ""; t.TagNum = t.TagNum ?? ""; t.TagAlbumArtist = t.TagAlbumArtist ?? "";
                     } catch { t.TagAlbum = t.Jahr = t.Genre = t.TagArtist = t.TagTitle = t.TagNum = t.TagAlbumArtist = ""; }
                     int cn = System.Threading.Interlocked.Increment(ref tagN);
-                    if (cn % 200 == 0 || cn == tagTotal) { WriteCache(); Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); statusLbl.Text = items.Count + S(" Tracks (Tags ", " tracks (tags ") + cn + "/" + tagTotal + ")"; })); }
+                    if (cn % 200 == 0 || cn == tagTotal) { WriteCache(); Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); statusLbl.Text = "Background Scan... " + items.Count + " " + S("Tracks", "tracks") + " | " + (cn * 100 / Math.Max(tagTotal, 1)) + "% Tags"; })); }
                 }
                 WriteCache();
                 Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); statusLbl.Text = items.Count + " " + S("Tracks", "tracks"); }));
@@ -1063,7 +1065,7 @@ public class MainWindow : Window {
             view.Refresh(); RestoreLvFocus();
             pending.Clear();
         }
-        statusLbl.Text = scanning ? items.Count + S(" Tracks (scanne... ", " tracks (scanning... ") + scanned.Count + ")" : items.Count + " " + S("Tracks", "tracks");
+        statusLbl.Text = scanning ? "Background Scan... " + scanned.Count + " " + S("Tracks", "tracks") : items.Count + " " + S("Tracks", "tracks");
         if (scanDone && queue.IsEmpty) {
             scanTimer.Stop();
             if (scanned.Count > 0) {
@@ -1191,7 +1193,7 @@ public class MainWindow : Window {
         menu.Background = Ctl; menu.Foreground = Fg;
         foreach (MenuItem top in menu.Items) SetItemColors(top, Ctl, Fg);
         if (lv != null && lv.ContextMenu != null) foreach (MenuItem c in lv.ContextMenu.Items) SetItemColors(c, Ctl, Fg);   // Kontextmenü: gleiche Farben + Style (war nur Hauptmenü)
-        topBar.Background = Ctl; statusLbl.Foreground = Fg; statusLbl.Opacity = 0.5;
+        topBar.Background = Ctl; statusLbl.Foreground = Fg; statusLbl.Opacity = 0.5; statusIco.Foreground = Dim;
         bar.Background = Ctl; bar.BorderBrush = Sep;
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
         seekFill.Background = Acc; seekThumb.Fill = Acc;
