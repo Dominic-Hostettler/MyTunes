@@ -634,6 +634,32 @@ public class MainWindow : Window {
             try { if (wm != null) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(wm); } catch { }
     }
 
+    string FmtDur(string d) {   // einheitlich: m:ss bzw. h:mm:ss (erste Zahl ohne fuehrende Null)
+        if (string.IsNullOrEmpty(d)) return d;
+        var p = d.Split(':');
+        int sec; if (p.Length < 2 || !int.TryParse(p[p.Length - 1], out sec)) return d;
+        int min; if (!int.TryParse(p[p.Length - 2], out min)) min = 0;
+        int h = 0; if (p.Length > 2) int.TryParse(p[p.Length - 3], out h);
+        return h > 0 ? string.Format("{0}:{1:00}:{2:00}", h, min, sec) : string.Format("{0}:{1:00}", min, sec);
+    }
+
+    double AiffDur(string p) {   // COMM-Chunk: numSampleFrames / sampleRate (80-bit, big-endian)
+        try {
+            var b = new byte[4096];
+            using (var fs = File.OpenRead(p)) { int rd = fs.Read(b, 0, b.Length); if (rd < b.Length) Array.Resize(ref b, rd); }
+            for (int i = 0; i + 26 < b.Length; i++)
+                if (b[i] == 'C' && b[i + 1] == 'O' && b[i + 2] == 'M' && b[i + 3] == 'M') {
+                    uint fr = ((uint)b[i + 10] << 24) | ((uint)b[i + 11] << 16) | ((uint)b[i + 12] << 8) | b[i + 13];
+                    int e = ((b[i + 16] & 127) << 8) | b[i + 17];   // 80-bit: 1 sign + 15 exp, dann 64-bit Mantisse
+                    if (e == 0) return 0;
+                    ulong m = 0; for (int k = 0; k < 8; k++) m = (m << 8) | b[i + 18 + k];
+                    double rate = (double)m * Math.Pow(2, e - 16383 - 63);
+                    return rate > 0 ? fr / rate : 0;
+                }
+        } catch { }
+        return 0;
+    }
+
     void FillDurations() {   // Shell32 liest "Dauer"-Spalte lazy beim ersten Einblenden
         if (durBusy || items.Count == 0) return;
         durBusy = true;
@@ -642,7 +668,7 @@ public class MainWindow : Window {
                 dynamic app = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));
                 dynamic wmp2 = null; string lastDir = "\0"; dynamic folder = null; int durIdx = -1; int dn = 0;
                 foreach (var t in items) {
-                    if (t.Dur != null) continue;
+                    if (t.Dur != null && t.Dur != "0:00" && t.Dur != "00:00") continue;   // "00:00" = gelesen aber ungueltig -> retry
                     string dir = System.IO.Path.GetDirectoryName(t.Path);
                     if (dir != lastDir) {   // Spaltenindex ist pro Ordner-Typ verschieden -> pro Ordner suchen
                         folder = app.NameSpace(dir); lastDir = dir; durIdx = -1;
@@ -663,17 +689,22 @@ public class MainWindow : Window {
                     try {
                         if (durIdx >= 0) {
                             string d = folder.GetDetailsOf(folder.ParseName(t.File), durIdx);
-                            if (d != null && d.Length == 4 && d[1] == ':') d = "0" + d;   // m:ss -> mm:ss fuer Sortierung
-                            t.Dur = d ?? "";
+                            t.Dur = FmtDur(d ?? "");
                         }
                     } catch { t.Dur = ""; }
                     if (string.IsNullOrEmpty(t.Dur)) {   // Shell kann manche nicht -> WMP liest sie
                         try {
                             if (wmp2 == null) wmp2 = Activator.CreateInstance(Type.GetTypeFromProgID("WMPlayer.OCX"));
                             string d2 = wmp2.newMedia(t.Path).durationString;
-                            if (d2 != null && d2.Length == 4 && d2[1] == ':') d2 = "0" + d2;
-                            t.Dur = d2 ?? "";
+                            t.Dur = FmtDur(d2 ?? "");
                         } catch { t.Dur = ""; }
+                    }
+                    if (string.IsNullOrEmpty(t.Dur) || t.Dur == "0:00" || t.Dur == "00:00") {   // aif/aiff: COMM-Chunk direkt lesen
+                        var ext = Path.GetExtension(t.Path).ToLowerInvariant();
+                        if (ext == ".aif" || ext == ".aiff") {
+                            double ds = AiffDur(t.Path);
+                            if (ds > 0) t.Dur = FmtDur(string.Format("{0}:{1:00}", (int)(ds / 60), (int)(ds % 60)));
+                        }
                     }
                     t.DurSec = DurToSec(t.Dur);
                     if (++dn % 500 == 0) {   // inkrementell: Cache + Anzeige alle 500
@@ -695,7 +726,7 @@ public class MainWindow : Window {
                         }
                         wmp2.controls.stop();
                         if (d3 != null && d3.Length == 4 && d3[1] == ':') d3 = "0" + d3;
-                        t.Dur = d3 ?? ""; t.DurSec = DurToSec(t.Dur);
+                        t.Dur = FmtDur(d3 ?? ""); t.DurSec = DurToSec(t.Dur);
                         try { wmp2.URL = ""; } catch { }   // Datei wieder freigeben
                     } catch { t.Dur = ""; }
                     if (++dn2 % 200 == 0) {
@@ -925,7 +956,7 @@ public class MainWindow : Window {
     }
     string lastSort, typeBuf = ""; int lastDir, lastClickTick, typeTick;
     Window infoWin;
-    string infoAck;
+    string infoAck, infoFocus; Button infoSave;
     public static readonly DependencyProperty IsSortingProperty =
         DependencyProperty.Register("IsSorting", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public bool IsSorting { get { return (bool)GetValue(IsSortingProperty); } set { SetValue(IsSortingProperty, value); } }
@@ -947,7 +978,7 @@ public class MainWindow : Window {
         var title = System.IO.Path.GetFileNameWithoutExtension(fullName); var num = "";   // Dateiname -> Titel (kein Ordner-Ableiten)
         var m = System.Text.RegularExpressions.Regex.Match(title, @"^(\d+)\s+(.+)$");
         if (m.Success) { num = m.Groups[1].Value; title = m.Groups[2].Value; }
-        var t = new Track { Num = num, Title = title, Artist = "", Album = "", Path = fullName, Cached = cached, File = System.IO.Path.GetFileName(fullName), Len = len, Dur = dur, DurSec = DurToSec(dur), TagAlbum = tagAlbum, Jahr = jahr, Genre = genre, TagArtist = tagArtist, TagTitle = tagTitle, TagNum = tagNum, TagAlbumArtist = tagAA };
+        var t = new Track { Num = num, Title = title, Artist = "", Album = "", Path = fullName, Cached = cached, File = System.IO.Path.GetFileName(fullName), Len = len, Dur = FmtDur(dur), DurSec = DurToSec(dur), TagAlbum = tagAlbum, Jahr = jahr, Genre = genre, TagArtist = tagArtist, TagTitle = tagTitle, TagNum = tagNum, TagAlbumArtist = tagAA };
         ApplyTags(t);   // gecachte Tags sofort in die Anzeigefelder
         if (cached) { if (mt > 0) t.Modified = new DateTime(mt); if (ct > 0) t.Created = new DateTime(ct); }
         else {   // Datei-Meta nur im Scan-Pfad, Cache-Start bleibt instant
@@ -1258,6 +1289,10 @@ public class MainWindow : Window {
                 Owner = this
             };
             infoWin.Closed += (s, e) => infoWin = null;
+            infoWin.PreviewKeyDown += (s, e) => {
+                if (e.Key == Key.Escape) infoWin.Close();
+                else if (e.Key == Key.Enter && infoSave != null && infoSave.IsEnabled) infoSave.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));   // speichern, offen bleiben
+            };
         }
         infoWin.Background = Bg; infoWin.Foreground = Fg;
         var g = new Grid { Margin = new Thickness(16, 12, 16, 12) };
@@ -1281,11 +1316,12 @@ public class MainWindow : Window {
             var l = new TextBlock { Text = rows[i][0], Foreground = Dim, Margin = new Thickness(0, 4, 16, 4) };
             bool ed = rows[i][2] != "";
             var v = new TextBox { Text = rows[i][1], IsReadOnly = !ed, BorderThickness = ed ? new Thickness(0, 0, 0, 1) : new Thickness(0), BorderBrush = Sep, Background = Brushes.Transparent, Foreground = Fg, Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
-            if (ed) edit[rows[i][2]] = v;
+            if (ed) { edit[rows[i][2]] = v; int ci = i; v.GotKeyboardFocus += (s2, e2) => infoFocus = rows[ci][2]; }
             Grid.SetRow(l, i); Grid.SetRow(v, i); Grid.SetColumn(v, 1);
             g.Children.Add(l); g.Children.Add(v);
         }
         var sv = new Button { Content = S("Speichern", "Save"), Padding = new Thickness(14, 4, 14, 4), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0), Cursor = Cursors.Hand, IsEnabled = false };
+        infoSave = sv;
         Action upd = () => sv.IsEnabled = edit["T"].Text != t.Title || edit["I"].Text != t.Artist || edit["A"].Text != t.Album ||
             edit["AA"].Text != (t.TagAlbumArtist ?? "") || edit["N"].Text != t.Num || edit["J"].Text != (t.Jahr ?? "") ||
             edit["G"].Text != (t.Genre ?? "") || edit["F"].Text != t.File;
@@ -1305,6 +1341,7 @@ public class MainWindow : Window {
             infoAck = null;
         }
         infoWin.Content = g;
+        if (infoFocus != null && edit.ContainsKey(infoFocus)) Dispatcher.BeginInvoke(DispatcherPriority.Input, (Action)(() => edit[infoFocus].Focus()));   // Fokus nach Rebuild zurueck
         if (!infoWin.IsVisible) infoWin.Show();
         infoWin.Activate();
     }
