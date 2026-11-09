@@ -462,6 +462,7 @@ public class MainWindow : Window {
     Style RowStyle() {
         var st = new Style(typeof(ListViewItem));
         st.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 5, 6, 5)));
+        st.Setters.Add(new Setter(Control.ForegroundProperty, Fg));
         st.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
         var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 55, 60) : Color.FromRgb(229, 243, 255))));
