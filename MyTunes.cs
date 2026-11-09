@@ -319,7 +319,7 @@ public class MainWindow : Window {
             if (h != null && h.Column != null) h.Column.Width = Math.Max(40, h.Column.Width + e.HorizontalChange);
         }));
         lv.MouseDoubleClick += (s, e) => { if (Up<ListViewItem>(e.OriginalSource as DependencyObject) != null && lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };   // nur auf Zeilen
-        var ctx = new ContextMenu();
+        var ctx = new ContextMenu { Style = FlatContextMenuStyle() }; ctx.Background = Ctl;   // gleiche Optik wie Main-Dropdown
         var ctxCopy = MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks());
         ctx.Items.Add(ctxCopy);
         ctx.Items.Add(MI('\uF14A', S("Alles ausw" + "\u00E4" + "hlen", "Select all"), "Strg+A", () => lv.SelectAll()));
@@ -728,7 +728,7 @@ public class MainWindow : Window {
         var p = new StackPanel { Orientation = Orientation.Horizontal };
         p.Children.Add(new TextBlock { Text = c.ToString(), FontFamily = fa, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center });
         p.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
-        var mi = new MenuItem { Header = p, InputGestureText = key };
+        var mi = new MenuItem { Header = p, InputGestureText = key, Style = FlatMenuItemStyle() };
         if (act != null) mi.Click += (s, e) => act();
         return mi;
     }
@@ -743,6 +743,22 @@ public class MainWindow : Window {
     }
 
     // flaches MenuItem-Template: Border+Content+Popup, kein Aero-Highlight
+    Style FlatContextMenuStyle() {   // Kontextmenü wie Main-Dropdown: rund, Schatten, Ctl
+        var st = new Style(typeof(ContextMenu));
+        var tpl = new ControlTemplate(typeof(ContextMenu));
+        var bd = new FrameworkElementFactory(typeof(Border));
+        bd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        bd.SetValue(Border.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 26, ShadowDepth = 4, Opacity = 0.33 });
+        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        bd.SetValue(Border.PaddingProperty, new Thickness(3));
+        bd.SetValue(Border.MarginProperty, new Thickness(8));   // Platz fuer den Schatten wie im Main-Dropdown
+        var sp = new FrameworkElementFactory(typeof(StackPanel));
+        sp.SetValue(StackPanel.IsItemsHostProperty, true);
+        bd.AppendChild(sp); tpl.VisualTree = bd;
+        st.Setters.Add(new Setter(ContextMenu.TemplateProperty, tpl));
+        return st;
+    }
+
     Style FlatMenuItemStyle() {
         var st = new Style(typeof(MenuItem));
         st.Setters.Add(new Setter(MenuItem.BackgroundProperty, Ctl));   // Setter < Trigger -> Hover greift
@@ -816,10 +832,13 @@ public class MainWindow : Window {
         chk.Setters.Add(new Setter(TextBlock.TextProperty, "✓", "tick"));
         tpl.Triggers.Add(chk);
         var hl = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
-        hl.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 65) : Color.FromRgb(226, 226, 226))));
+        hl.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 60) : Color.FromRgb(226, 226, 226))));
         tpl.Triggers.Add(hl);
+        var mo = new Trigger { Property = MenuItem.IsMouseOverProperty, Value = true };   // ContextMenu hebt ueber IsMouseOver, nicht IsHighlighted
+        mo.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 60) : Color.FromRgb(226, 226, 226))));
+        tpl.Triggers.Add(mo);
         var op = new Trigger { Property = MenuItem.IsSubmenuOpenProperty, Value = true };
-        op.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 65) : Color.FromRgb(226, 226, 226))));
+        op.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 60) : Color.FromRgb(226, 226, 226))));
         tpl.Triggers.Add(op);
         var sub = new Trigger { Property = MenuItem.RoleProperty, Value = MenuItemRole.SubmenuHeader };
         sub.Setters.Add(new Setter(Popup.PlacementProperty, PlacementMode.Right, "pop"));   // Level-2 seitlich statt drueber
@@ -1106,6 +1125,7 @@ public class MainWindow : Window {
             DimC = on ? (theme == 1 ? Color.FromRgb(165, 155, 180) : Color.FromRgb(160, 160, 160)) : Colors.Gray;
         }
         Bg = NewBrush(BgC); Fg = NewBrush(FgC); Ctl = NewBrush(CtlC); Sep = NewBrush(SepC); Acc = NewBrush(AccC); Dim = NewBrush(DimC);
+        if (lv != null && lv.ContextMenu != null) lv.ContextMenu.Background = Ctl;   // Kontextmenü folgt dem Theme
 
         Background = Ctl; Foreground = Fg;
         lv.Background = Bg; lv.Foreground = Fg;
