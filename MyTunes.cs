@@ -1,4 +1,4 @@
-// MyTunes - Musik-Browser fuer "iTunes Media\Music" (WPF, single-file, csc.exe)
+﻿// MyTunes - Musik-Browser fuer "iTunes Media\Music" (WPF, single-file, csc.exe)
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -84,6 +84,9 @@ public class MainWindow : Window {
     int histPos = -1;
     bool darkOn, seeking, scanDone, scanning, wantDark;
     int theme;
+    int lang;
+    string S(string de, string en) { return lang == 1 ? en : de; }
+    readonly string[] props = { "Num", "Title", "Artist", "Album", "DurSec", "Len", "Modified", "Created", "File" };
     MenuItem mDark;
 
     ConcurrentQueue<Track> queue = new ConcurrentQueue<Track>();
@@ -115,24 +118,24 @@ public class MainWindow : Window {
 
         // --- Menü ---
         menu = new Menu();
-        var mDatei = new MenuItem { Header = "Datei" };
-        mDatei.Items.Add(MI('\uF021', "Medien neu scannen", "F5", () => StartJob(false, true)));
-        mDatei.Items.Add(MI('\uF07B', "Quellordner w" + "\u00E4" + "hlen", null, PickRoot));
-        mDatei.Items.Add(MI('\uF08B', "Beenden", null, () => Close()));
-        var mBearb = new MenuItem { Header = "Bearbeiten" };
-        mBearb.Items.Add(MI('\uF0E2', "Rückgängig", "Strg+Z", () => Undo()));
-        mBearb.Items.Add(MI('\uF01E', "Wiederherstellen", "Strg+Y", () => Redo()));
-        mBearb.Items.Add(MI('\uF0C4', "Ausschneiden", "Strg+X", () => CopyTracks(true)));
-        mBearb.Items.Add(MI('\uF0C5', "Kopieren", "Strg+C", () => CopyTracks(false)));
-        mBearb.Items.Add(MI('\uF328', "Einfügen", "Strg+V", () => PasteTracks()));
-        mBearb.Items.Add(MI('\uF14A', "Alles auswählen", "Strg+A", () => lv.SelectAll()));
-        mBearb.Items.Add(MI('\uF002', "Seite durchsuchen...", "Strg+F", () => SearchTracks()));
-        mBearb.Items.Add(MI('\uF061', "Zum gespielten Track", "Strg+L", () => RevealPlaying()));
-        var mAnsicht = new MenuItem { Header = "Ansicht" };
-        mDark = new MenuItem { Header = "Dunkelmodus", IsCheckable = true };
+        var mDatei = new MenuItem { Header = S("Datei", "File") };
+        mDatei.Items.Add(MI('\uF021', S("Medien neu scannen", "Rescan media"), "F5", () => StartJob(false, true)));
+        mDatei.Items.Add(MI('\uF07B', S("Quellordner w" + "\u00E4" + "hlen", "Choose source folder"), null, PickRoot));
+        mDatei.Items.Add(MI('\uF08B', S("Beenden", "Exit"), null, () => Close()));
+        var mBearb = new MenuItem { Header = S("Bearbeiten", "Edit") };
+        mBearb.Items.Add(MI('\uF0E2', S("Rückgängig", "Undo"), "Strg+Z", () => Undo()));
+        mBearb.Items.Add(MI('\uF01E', S("Wiederherstellen", "Redo"), "Strg+Y", () => Redo()));
+        mBearb.Items.Add(MI('\uF0C4', S("Ausschneiden", "Cut"), "Strg+X", () => CopyTracks(true)));
+        mBearb.Items.Add(MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks(false)));
+        mBearb.Items.Add(MI('\uF328', S("Einfügen", "Paste"), "Strg+V", () => PasteTracks()));
+        mBearb.Items.Add(MI('\uF14A', S("Alles auswählen", "Select all"), "Strg+A", () => lv.SelectAll()));
+        mBearb.Items.Add(MI('\uF002', S("Seite durchsuchen...", "Search..."), "Strg+F", () => SearchTracks()));
+        mBearb.Items.Add(MI('\uF061', S("Zum gespielten Track", "Go to playing track"), "Strg+L", () => RevealPlaying()));
+        var mAnsicht = new MenuItem { Header = S("Ansicht", "View") };
+        mDark = new MenuItem { Header = S("Dunkelmodus", "Dark mode"), IsCheckable = true };
         mDark.Checked += (s, e) => SetDark(true);
         mDark.Unchecked += (s, e) => SetDark(false);
-        mAnsicht.Items.Add(MI('\uF186', "Dunkelmodus", null, () => mDark.IsChecked = !mDark.IsChecked));
+        mAnsicht.Items.Add(MI('\uF186', S("Dunkelmodus", "Dark mode"), null, () => mDark.IsChecked = !mDark.IsChecked));
         menu.Items.Add(mDatei); menu.Items.Add(mBearb); menu.Items.Add(mAnsicht);
         statusLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), TextAlignment = TextAlignment.Right };
         topBar = new DockPanel { LastChildFill = false };
@@ -164,7 +167,7 @@ public class MainWindow : Window {
         btnPrev.Click += (s, e) => PrevOrRestart();
         btnPlay.Click += (s, e) => TogglePlay();
         btnNext.Click += (s, e) => Step(1);
-        nowLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 8, 0), Foreground = Brushes.Gray, TextTrimming = TextTrimming.CharacterEllipsis, Cursor = Cursors.Hand, ToolTip = "Doppelklick: zum gespielten Track" };
+        nowLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 8, 0), Foreground = Brushes.Gray, TextTrimming = TextTrimming.CharacterEllipsis, Cursor = Cursors.Hand, ToolTip = S("Doppelklick: zum gespielten Track", "Double-click: go to playing track") };
         nowLbl.MouseLeftButtonDown += (s, e) => { if (e.ClickCount == 2) RevealPlaying(); };
         var volIco = new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(18, 0, 2, 0), Cursor = Cursors.Hand, ToolTip = "Stumm" };
         volIco.MouseLeftButtonUp += (s, e) => {
@@ -212,15 +215,15 @@ public class MainWindow : Window {
         // --- Liste ---
         gv = new GridView();
         gv.Columns.Add(new GridViewColumn { Header = "#", Width = 55, CellTemplate = TextCell("Mark") });
-        gv.Columns.Add(new GridViewColumn { Header = "Titel", Width = 450, CellTemplate = TextCell("Title") });
-        gv.Columns.Add(new GridViewColumn { Header = "Interpret", Width = 270, CellTemplate = TextCell("Artist") });
+        gv.Columns.Add(new GridViewColumn { Header = S("Titel", "Title"), Width = 450, CellTemplate = TextCell("Title") });
+        gv.Columns.Add(new GridViewColumn { Header = S("Interpret", "Artist"), Width = 270, CellTemplate = TextCell("Artist") });
         gv.Columns.Add(new GridViewColumn { Header = "Album", Width = 270, CellTemplate = TextCell("Album") });
         colOrder = gv.Columns.ToList();   // feste Reihenfolge fuer Ein/Aus-Blenden
-        colOrder.Add(new GridViewColumn { Header = "Dauer", Width = 70, CellTemplate = TextCell("Dur") });
-        colOrder.Add(new GridViewColumn { Header = "Größe", Width = 80, CellTemplate = TextCellFmt("Len", "{0:N0} KB") });
-        colOrder.Add(new GridViewColumn { Header = "Geändert", Width = 140, CellTemplate = TextCellFmt("Modified", "{0:dd.MM.yyyy HH:mm}") });
-        colOrder.Add(new GridViewColumn { Header = "Erstellt", Width = 140, CellTemplate = TextCellFmt("Created", "{0:dd.MM.yyyy HH:mm}") });
-        colOrder.Add(new GridViewColumn { Header = "Dateiname", Width = 200, CellTemplate = TextCell("File") });
+        colOrder.Add(new GridViewColumn { Header = S("Dauer", "Length"), Width = 70, CellTemplate = TextCell("Dur") });
+        colOrder.Add(new GridViewColumn { Header = S("Größe", "Size"), Width = 80, CellTemplate = TextCellFmt("Len", "{0:N0} KB") });
+        colOrder.Add(new GridViewColumn { Header = S("Geändert", "Modified"), Width = 140, CellTemplate = TextCellFmt("Modified", "{0:dd.MM.yyyy HH:mm}") });
+        colOrder.Add(new GridViewColumn { Header = S("Erstellt", "Created"), Width = 140, CellTemplate = TextCellFmt("Created", "{0:dd.MM.yyyy HH:mm}") });
+        colOrder.Add(new GridViewColumn { Header = S("Dateiname", "Filename"), Width = 200, CellTemplate = TextCell("File") });
         var colOn = new bool[colOrder.Count];
         bool[] onSaved = null; double[] wSaved = null;
         try {   // gespeicherte Spalten: "sichtbar,breite|..." in cols.txt
@@ -246,25 +249,37 @@ public class MainWindow : Window {
                     int pos = 0; int want = colOrder.IndexOf(col);
                     for (int i = 0; i < want; i++) if (gv.Columns.Contains(colOrder[i])) pos++;
                     gv.Columns.Insert(Math.Min(pos, gv.Columns.Count), col);
-                    if (name == "Dauer") FillDurations();
-                    else if (name == "Größe" || name == "Geändert" || name == "Erstellt") FillMeta();
+                    var key = props[colOrder.IndexOf(col)];
+                    if (key == "DurSec") FillDurations();
+                    else if (key == "Len" || key == "Modified" || key == "Created") FillMeta();
                 } else gv.Columns.Remove(col);
             };
             return mi;
         };
         colMenu = new ContextMenu();
-        var names = new[] { "#", "Titel", "Interpret", "Album", "Dauer", "Größe", "Geändert", "Erstellt", "Dateiname" };
+        var names = new[] { "#", S("Titel", "Title"), S("Interpret", "Artist"), "Album", S("Dauer", "Length"), S("Größe", "Size"), S("Geändert", "Modified"), S("Erstellt", "Created"), S("Dateiname", "Filename") };
+
         var ctxT = new MenuItem[9];
         for (int i = 0; i < 9; i++) { ctxT[i] = ColToggle(colOrder[i], names[i], colOn[i]); colMenu.Items.Add(ctxT[i]); }
-        var mTheme = MI('\uF53F', "Design", null, null);   // Level-2-Untermenue mit Icon
+        var mTheme = MI('\uF53F', S("Design", "Theme"), null, null);   // Level-2-Untermenue mit Icon
         var mNorm = new MenuItem { Header = "Normal", IsCheckable = true, IsChecked = theme == 0 };
         var mAlch = new MenuItem { Header = "Alchemist", IsCheckable = true, IsChecked = theme == 1 };
-        mNorm.Click += (s, e) => { theme = 0; mNorm.IsChecked = true; mAlch.IsChecked = false; SetDark(darkOn); };
-        mAlch.Click += (s, e) => { theme = 1; mNorm.IsChecked = false; mAlch.IsChecked = true; SetDark(darkOn); };
-        mTheme.Items.Add(mNorm); mTheme.Items.Add(mAlch);
+        var mDes = new MenuItem { Header = "Desert", IsCheckable = true, IsChecked = theme == 2 };
+        mNorm.Click += (s, e) => { theme = 0; mNorm.IsChecked = true; mAlch.IsChecked = false; mDes.IsChecked = false; SetDark(darkOn); };
+        mAlch.Click += (s, e) => { theme = 1; mNorm.IsChecked = false; mAlch.IsChecked = true; mDes.IsChecked = false; SetDark(darkOn); };
+        mDes.Click += (s, e) => { theme = 2; mNorm.IsChecked = false; mAlch.IsChecked = false; mDes.IsChecked = true; SetDark(darkOn); };
+        mTheme.Items.Add(mNorm); mTheme.Items.Add(mAlch); mTheme.Items.Add(mDes);
         mAnsicht.Items.Add(mTheme);
+        var mLang = MI('\uF0AC', S("Sprache", "Language"), null, null);   // Level-2-Untermenue
+        var mDe = new MenuItem { Header = "Deutsch", IsCheckable = true, IsChecked = lang == 0 };
+        var mEn = new MenuItem { Header = "English", IsCheckable = true, IsChecked = lang == 1 };
+        mDe.Click += (s, e) => SetLang(0); mEn.Click += (s, e) => SetLang(1);
+        mLang.Items.Add(mDe); mLang.Items.Add(mEn);
+        mAnsicht.Items.Add(mLang);
+        var mCols = MI('\uF0DB', S("Spalten", "Columns"), null, null);   // Level-2-Untermenue
         var ansT = new MenuItem[9];
-        for (int i = 0; i < 9; i++) { ansT[i] = ColToggle(colOrder[i], names[i], colOn[i]); mAnsicht.Items.Add(ansT[i]); }
+        for (int i = 0; i < 9; i++) { ansT[i] = ColToggle(colOrder[i], names[i], colOn[i]); mCols.Items.Add(ansT[i]); }
+        mAnsicht.Items.Add(mCols);
         for (int i = 0; i < 9; i++) {   // Haeckchen in beiden Menues synchron halten
             int j = i;
             ctxT[j].Click += (s, e) => ansT[j].IsChecked = ctxT[j].IsChecked;
@@ -283,15 +298,15 @@ public class MainWindow : Window {
         }));
         lv.MouseDoubleClick += (s, e) => { if (Up<ListViewItem>(e.OriginalSource as DependencyObject) != null && lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };   // nur auf Zeilen
         var ctx = new ContextMenu();
-        ctx.Items.Add(MI('\uF0C4', "Ausschneiden", null, () => CopyTracks(true)));
-        ctx.Items.Add(MI('\uF0C5', "Kopieren", null, () => CopyTracks(false)));
-        ctx.Items.Add(MI('\uF328', "Einf" + "\u00FC" + "gen", null, () => PasteTracks()));
-        ctx.Items.Add(MI('\uF14A', "Alles ausw" + "\u00E4" + "hlen", null, () => lv.SelectAll()));
-        ctx.Items.Add(MI('\uF07C', "Datei im Explorer anzeigen", null, () => {
+        ctx.Items.Add(MI('\uF0C4', S("Ausschneiden", "Cut"), null, () => CopyTracks(true)));
+        ctx.Items.Add(MI('\uF0C5', S("Kopieren", "Copy"), null, () => CopyTracks(false)));
+        ctx.Items.Add(MI('\uF328', S("Einf" + "\u00FC" + "gen", "Paste"), null, () => PasteTracks()));
+        ctx.Items.Add(MI('\uF14A', S("Alles ausw" + "\u00E4" + "hlen", "Select all"), null, () => lv.SelectAll()));
+        ctx.Items.Add(MI('\uF07C', S("Datei im Explorer anzeigen", "Show in Explorer"), null, () => {
             var t = lv.SelectedItem as Track;
             if (t != null) System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + t.Path + "\"");
         }));
-        ctx.Items.Add(MI('\uF05A', "Informationen", null, () => {
+        ctx.Items.Add(MI('\uF05A', S("Informationen", "Info"), null, () => {
             var t = lv.SelectedItem as Track;
             if (t != null) ShowInfo(t);
         }));
@@ -303,17 +318,59 @@ public class MainWindow : Window {
                 if (t != null) { PlayItem(t); e.Handled = true; }
             }
         };
+        lv.GiveFeedback += (s, e) => {   // Badge folgt dem Cursor
+            if (dragBadge != null) {   // Cursor.Position = phys. Pixel -> DIP umrechnen (DPI-Skalierung)
+                var p = System.Windows.Forms.Cursor.Position;
+                var m = PresentationSource.FromVisual(lv).CompositionTarget.TransformToDevice;
+                dragBadge.Left = p.X / m.M11 + 4; dragBadge.Top = p.Y / m.M22 + 6;
+            }
+            e.UseDefaultCursors = false;
+            try { System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Arrow; } catch { }   // normaler Pfeil statt Verbotssymbol
+            e.Handled = true;
+        };
         lv.PreviewMouseLeftButtonDown += (s, e) => {
             dragStart = e.GetPosition(lv);
-            dragOk = Up<ListViewItem>(e.OriginalSource as DependencyObject) != null;   // Drag nur auf Zeilen, nicht Header
+            var src = e.OriginalSource as DependencyObject;
+            var hit = Up<ListViewItem>(src);
+            dragOk = hit != null;   // Drag nur auf Zeilen, nicht Header
+            dragPaths = null;
+            if (dragOk) {   // selektierte Zeile gedrueckt -> ganze Mehrfachauswahl, sonst nur diese
+                var t = hit.DataContext as Track;
+                dragPaths = (lv.SelectedItems.Contains(t) ? lv.SelectedItems.Cast<Track>() : new[] { t }).Select(x => x.Path).ToArray();
+                if (lv.SelectedItems.Contains(t) && (System.Windows.Input.Keyboard.Modifiers & (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift)) == 0) { pendingItem = t; e.Handled = true; }   // Drag behaelt Mehrfachauswahl, echter Klick kollabiert spaeter
+            }
+            if (!dragOk) {   // Klick auf farbige Gruppenzeile -> ganze Gruppe selektieren
+                var gi = Up<GroupItem>(src);
+                if (gi != null) {
+                    var g = gi.DataContext as System.Windows.Data.CollectionViewGroup ?? gi.Content as System.Windows.Data.CollectionViewGroup;
+                    if (g != null) { lv.SelectedItems.Clear(); foreach (var x in g.Items) lv.SelectedItems.Add(x); }
+                    e.Handled = true;
+                }
+            }
+        };
+        lv.PreviewMouseLeftButtonUp += (s, e) => {   // echter Klick (ohne Drag) auf selektierte Zeile kollabiert Auswahl
+            if (pendingItem != null) { lv.SelectedItems.Clear(); lv.SelectedItems.Add(pendingItem); pendingItem = null; }
         };
         lv.PreviewMouseMove += (s, e) => {
-            if (dragOk && e.LeftButton == MouseButtonState.Pressed && lv.SelectedItems.Count > 0 &&
+            if (dragOk && dragPaths != null && dragPaths.Length > 0 && e.LeftButton == MouseButtonState.Pressed &&
                 (e.GetPosition(lv) - dragStart).Length > 6) {
+                pendingItem = null;
                 var col = new StringCollection();
-                col.AddRange(lv.SelectedItems.Cast<Track>().Select(t => t.Path).ToArray());
+                col.AddRange(dragPaths);
                 var d = new System.Windows.DataObject(); d.SetFileDropList(col);
+                dragBadge = new Window {   // schwarz auf weissem Rechteck: Anzahl gezogene Tracks
+                    WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent,
+                    ShowInTaskbar = false, Topmost = true, ShowActivated = false, IsHitTestVisible = false,
+                    ResizeMode = ResizeMode.NoResize, MinWidth = 0, MinHeight = 0
+                };
+                var bb = new Border { Background = Brushes.White, CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(14),   // Luft fuer den Schatten
+                    Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 26, ShadowDepth = 4, Opacity = 0.33 } };
+                bb.Child = new TextBlock { Text = dragPaths.Length.ToString(), Foreground = Brushes.Black, FontWeight = FontWeights.SemiBold, FontSize = 12 };
+                bb.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));   // explizit: exakt auf Text + Margin
+                dragBadge.Width = bb.DesiredSize.Width; dragBadge.Height = bb.DesiredSize.Height;
+                dragBadge.Content = bb; dragBadge.Show();
                 DragDrop.DoDragDrop(lv, d, System.Windows.DragDropEffects.Copy);
+                dragBadge.Close(); dragBadge = null;
             }
         };
         dock.Children.Add(lv);
@@ -571,7 +628,20 @@ public class MainWindow : Window {
         igrid.AppendChild(tick);
         cp.SetValue(Grid.ColumnProperty, 1);
         igrid.AppendChild(cp);
-        sp.AppendChild(igrid); sp.AppendChild(pop); bd.AppendChild(sp);
+        sp.AppendChild(igrid); sp.AppendChild(pop);
+        var arw = new FrameworkElementFactory(typeof(TextBlock));
+        arw.Name = "arw";
+        arw.SetValue(TextBlock.TextProperty, "\uF054");
+        arw.SetValue(TextBlock.FontFamilyProperty, fa);
+        arw.SetValue(TextBlock.FontSizeProperty, 9.0);
+        arw.SetBinding(TextBlock.ForegroundProperty, new Binding("Foreground") { RelativeSource = rs });
+        arw.SetValue(TextBlock.MarginProperty, new Thickness(0, 0, 10, 0));
+        arw.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+        arw.SetValue(TextBlock.VisibilityProperty, Visibility.Collapsed);   // nur bei Untermenue
+        var dpk = new FrameworkElementFactory(typeof(DockPanel));
+        arw.SetValue(DockPanel.DockProperty, Dock.Right);
+        dpk.AppendChild(arw); dpk.AppendChild(sp);
+        bd.AppendChild(dpk);
         tpl.VisualTree = bd;
         var chkable = new Trigger { Property = MenuItem.IsCheckableProperty, Value = true };
         chkable.Setters.Add(new Setter(TextBlock.VisibilityProperty, Visibility.Visible, "tick"));
@@ -587,6 +657,7 @@ public class MainWindow : Window {
         tpl.Triggers.Add(op);
         var sub = new Trigger { Property = MenuItem.RoleProperty, Value = MenuItemRole.SubmenuHeader };
         sub.Setters.Add(new Setter(Popup.PlacementProperty, PlacementMode.Right, "pop"));   // Level-2 seitlich statt drueber
+        sub.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "arw"));   // Pfeil rechts
         tpl.Triggers.Add(sub);
         st.Setters.Add(new Setter(MenuItem.TemplateProperty, tpl));
         return st;
@@ -629,19 +700,7 @@ public class MainWindow : Window {
         var h = e.OriginalSource as GridViewColumnHeader;
         if (h == null || h.Column == null) return;
         var col = h.Column.Header.ToString().TrimEnd(' ', '▴', '▾');
-        string prop;
-        switch (col) {
-            case "#": prop = "Num"; break;
-            case "Titel": prop = "Title"; break;
-            case "Interpret": prop = "Artist"; break;
-            case "Album": prop = "Album"; break;
-            case "Dauer": prop = "DurSec"; break;
-            case "Größe": prop = "Len"; break;
-            case "Geändert": prop = "Modified"; break;
-            case "Erstellt": prop = "Created"; break;
-            case "Dateiname": prop = "File"; break;
-            default: prop = "Num"; break;
-        }
+        var prop = props[colOrder.IndexOf(h.Column)] ?? "Num";
         int tc = Environment.TickCount;
         if (lastSort == prop && tc - lastClickTick < 500) return;   // Doppelklick ignoriert 2. Klick
         lastClickTick = tc;
@@ -663,6 +722,7 @@ public class MainWindow : Window {
                         view.SortDescriptions.Add(new SortDescription("NumInt", ListSortDirection.Ascending));   // 2. Kriterium: Titelnummer
                         if (prop != "Title") view.SortDescriptions.Add(new SortDescription("Title", ListSortDirection.Ascending));   // Fallback: Titelname
                         if (prop == "Album") view.GroupDescriptions.Add(new PropertyGroupDescription("AlbumKey"));
+                        else if (prop == "Artist") view.GroupDescriptions.Add(new PropertyGroupDescription("Artist"));
                     }
                 }
             } finally {
@@ -742,6 +802,9 @@ public class MainWindow : Window {
     }
     bool hadCache, dragOk;
     Point dragStart;
+    string[] dragPaths;
+    Window dragBadge;
+    object pendingItem;
 
     static T Up<T>(DependencyObject d) where T : class {
         while (d != null && !(d is T)) d = VisualTreeHelper.GetParent(d);
@@ -760,7 +823,7 @@ public class MainWindow : Window {
             view.Refresh();
             pending.Clear();
         }
-        statusLbl.Text = scanning ? items.Count + " Tracks (scanne... " + scanned.Count + ")" : items.Count + " Tracks";
+        statusLbl.Text = scanning ? items.Count + S(" Tracks (scanne... ", " tracks (scanning... ") + scanned.Count + ")" : items.Count + " " + S("Tracks", "tracks");
         if (scanDone && queue.IsEmpty) {
             scanTimer.Stop();
             if (scanned.Count > 0) {
@@ -768,7 +831,7 @@ public class MainWindow : Window {
                 WriteCache();
             }
             scanning = false;
-            statusLbl.Text = items.Count + " Tracks";
+            statusLbl.Text = items.Count + " " + S("Tracks", "tracks");
             if (gv.Columns.Contains(colOrder[4])) FillDurations();   // Meta-Spalten lazy nachfuellen
             if (gv.Columns.Contains(colOrder[5]) || gv.Columns.Contains(colOrder[6]) || gv.Columns.Contains(colOrder[7])) FillMeta();
         }
@@ -843,16 +906,15 @@ public class MainWindow : Window {
         var cdo = Clipboard.GetDataObject();
         if (!cdo.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
         var dest = lv.SelectedItem != null ? Path.GetDirectoryName(((Track)lv.SelectedItem).Path) : root;
-        bool move = false;
-        try { move = (((MemoryStream)cdo.GetData("Preferred DropEffect")).ReadByte() & 2) != 0; } catch { }
+        // immer kopieren, nie verschieben
         foreach (var src in (string[])cdo.GetData(System.Windows.DataFormats.FileDrop)) {
             var target = Path.Combine(dest, Path.GetFileName(src));
-            try { if (!File.Exists(target)) { if (move) File.Move(src, target); else File.Copy(src, target); } } catch { }
+            try { if (!File.Exists(target)) File.Copy(src, target); } catch { }
         }
         StartJob(false, true);
     }
     void SearchTracks() {
-        var q = Microsoft.VisualBasic.Interaction.InputBox("Suchen nach (Titel, Interpret, Album):", "Medien durchsuchen");
+        var q = Microsoft.VisualBasic.Interaction.InputBox(S("Suchen nach (Titel, Interpret, Album):", "Search for (title, artist, album):"), S("Medien durchsuchen", "Search media"));
         if (string.IsNullOrEmpty(q)) return;
         var q2 = q.ToLowerInvariant();
         var hit = items.FirstOrDefault(t => (t.Title + " " + t.Artist + " " + t.Album).ToLowerInvariant().Contains(q2));
@@ -863,12 +925,21 @@ public class MainWindow : Window {
     // ---------- Darkmode ----------
     void SetDark(bool on) {
         darkOn = on;
-        BgC = on ? (theme == 1 ? Color.FromRgb(7, 6, 10) : Color.FromRgb(30, 30, 30)) : Colors.White;
-        FgC = on ? Color.FromRgb(220, 220, 220) : Colors.Black;
-        CtlC = on ? (theme == 1 ? Color.FromRgb(13, 11, 17) : Color.FromRgb(45, 45, 48)) : Color.FromRgb(240, 240, 240);
-        SepC = on ? (theme == 1 ? Color.FromRgb(26, 23, 32) : Color.FromRgb(62, 62, 66)) : Color.FromRgb(224, 224, 224);
-        AccC = theme == 1 ? Color.FromRgb(150, 100, 230) : (on ? Color.FromRgb(96, 150, 255) : Color.FromRgb(0, 120, 215));
-        DimC = on ? (theme == 1 ? Color.FromRgb(165, 155, 180) : Color.FromRgb(160, 160, 160)) : Colors.Gray;
+        if (theme == 2) {   // Desert: warm
+            BgC = on ? Color.FromRgb(30, 24, 19) : Color.FromRgb(252, 248, 242);
+            FgC = on ? Color.FromRgb(225, 215, 205) : Color.FromRgb(60, 45, 35);
+            CtlC = on ? Color.FromRgb(42, 34, 27) : Color.FromRgb(246, 238, 226);
+            SepC = on ? Color.FromRgb(66, 55, 44) : Color.FromRgb(226, 214, 196);
+            AccC = Color.FromRgb(220, 140, 50);
+            DimC = on ? Color.FromRgb(170, 155, 140) : Color.FromRgb(150, 130, 115);
+        } else {
+            BgC = on ? (theme == 1 ? Color.FromRgb(7, 6, 10) : Color.FromRgb(30, 30, 30)) : Colors.White;
+            FgC = on ? Color.FromRgb(220, 220, 220) : Colors.Black;
+            CtlC = on ? (theme == 1 ? Color.FromRgb(13, 11, 17) : Color.FromRgb(45, 45, 48)) : Color.FromRgb(240, 240, 240);
+            SepC = on ? (theme == 1 ? Color.FromRgb(26, 23, 32) : Color.FromRgb(62, 62, 66)) : Color.FromRgb(224, 224, 224);
+            AccC = theme == 1 ? Color.FromRgb(150, 100, 230) : (on ? Color.FromRgb(96, 150, 255) : Color.FromRgb(0, 120, 215));
+            DimC = on ? (theme == 1 ? Color.FromRgb(165, 155, 180) : Color.FromRgb(160, 160, 160)) : Colors.Gray;
+        }
         Bg = NewBrush(BgC); Fg = NewBrush(FgC); Ctl = NewBrush(CtlC); Sep = NewBrush(SepC); Acc = NewBrush(AccC); Dim = NewBrush(DimC);
 
         Background = Ctl; Foreground = Fg;
@@ -979,6 +1050,12 @@ public class MainWindow : Window {
         return st;
     }
 
+    void SetLang(int l) {   // Sprache merken + Neustart (Labels werden im Ctor gebaut)
+        lang = l; SaveBounds();
+        try { System.Diagnostics.Process.Start(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
+        Application.Current.Shutdown();
+    }
+
     void PickRoot() {   // Quellordner waehlen -> merken + neu scannen
         var d = new System.Windows.Forms.FolderBrowserDialog { SelectedPath = root, Description = "Musik-Ordner wählen" };
         if (d.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
@@ -991,7 +1068,7 @@ public class MainWindow : Window {
     void ShowInfo(Track t) {   // nur ein Fenster: vorhandenes wird aktualisiert
         if (infoWin == null) {
             infoWin = new Window {
-                Title = "Informationen", Width = 440, SizeToContent = SizeToContent.Height,
+                Title = S("Informationen", "Info"), Width = 440, SizeToContent = SizeToContent.Height,
                 ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this
             };
@@ -1002,13 +1079,13 @@ public class MainWindow : Window {
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var rows = new string[][] {
-            new[] { "Titel", t.Title }, new[] { "Interpret", t.Artist }, new[] { "Album", t.Album },
-            new[] { "Nummer", t.Num }, new[] { "Dateiname", t.File },
-            new[] { "Dauer", t.Dur ?? "" },
-            new[] { "Größe", t.Len > 0 ? (t.Len / 1024.0).ToString("N1") + " MB" : "" },
-            new[] { "Geändert", t.Modified.Year > 2000 ? t.Modified.ToString("dd.MM.yyyy HH:mm") : "" },
-            new[] { "Erstellt", t.Created.Year > 2000 ? t.Created.ToString("dd.MM.yyyy HH:mm") : "" },
-            new[] { "Pfad", t.Path }
+            new[] { S("Titel", "Title"), t.Title }, new[] { S("Interpret", "Artist"), t.Artist }, new[] { "Album", t.Album },
+            new[] { S("Nummer", "Number"), t.Num }, new[] { S("Dateiname", "Filename"), t.File },
+            new[] { S("Dauer", "Length"), t.Dur ?? "" },
+            new[] { S("Größe", "Size"), t.Len > 0 ? (t.Len / 1024.0).ToString("N1") + " MB" : "" },
+            new[] { S("Geändert", "Modified"), t.Modified.Year > 2000 ? t.Modified.ToString("dd.MM.yyyy HH:mm") : "" },
+            new[] { S("Erstellt", "Created"), t.Created.Year > 2000 ? t.Created.ToString("dd.MM.yyyy HH:mm") : "" },
+            new[] { S("Pfad", "Path"), t.Path }
         };
         for (int i = 0; i < rows.Length; i++) {
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -1025,7 +1102,7 @@ public class MainWindow : Window {
     // ---------- Fenster-Persistenz ----------
     void SaveBounds() {
         var r = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-        try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == WindowState.Maximized ? ",max" : "") + (darkOn ? ",dark" : "") + (theme == 1 ? ",alchemist" : "")); } catch { }
+        try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == WindowState.Maximized ? ",max" : "") + (darkOn ? ",dark" : "") + (theme == 1 ? ",alchemist" : theme == 2 ? ",desert" : "") + (lang == 1 ? ",en" : "")); } catch { }
         try {   // Spaltenzustand sichern
             var sb2 = "";
             for (int i = 0; i < colOrder.Count; i++) {
@@ -1042,7 +1119,8 @@ public class MainWindow : Window {
             if (SystemParameters.VirtualScreenWidth > 0) { Left = r.X; Top = r.Y; Width = r.Width; Height = r.Height; }
             if (p.Length > 4 && p[4] == "max") WindowState = WindowState.Maximized;
             wantDark = Array.IndexOf(p, "dark") >= 0;
-            theme = Array.IndexOf(p, "alchemist") >= 0 ? 1 : 0;
+            theme = Array.IndexOf(p, "alchemist") >= 0 ? 1 : Array.IndexOf(p, "desert") >= 0 ? 2 : 0;
+            lang = Array.IndexOf(p, "en") >= 0 ? 1 : 0;
         } catch { }
     }
 }
