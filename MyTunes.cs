@@ -543,7 +543,7 @@ public class MainWindow : Window {
         st.Triggers.Add(sel);
         var dim = new DataTrigger {
             Binding = new Binding("IsSorting") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Window), 1) }, Value = true };
-        dim.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
+        dim.Setters.Add(new Setter(Control.ForegroundProperty, NewBrush(Color.FromArgb(110, FgC.R, FgC.G, FgC.B))));
         st.Triggers.Add(dim);
         return st;
     }
