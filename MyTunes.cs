@@ -448,7 +448,7 @@ public class MainWindow : Window {
             idx++; rows++;
         }
         var sv = FindScroll(lv);
-        if (sv != null) sv.ScrollToVerticalOffset(Math.Max(0, rows - (lv.ActualHeight / 26) / 2));
+        if (sv != null) sv.ScrollToVerticalOffset(Math.Max(0, rows - 1));   // Track = zweite Zeile
         else lv.ScrollIntoView(playing);
     }
 
