@@ -24,7 +24,7 @@ static class Program {
     static void Main() { new Application().Run(new MainWindow()); }
 }
 
-public class Track {
+public class Track : INotifyPropertyChanged {
     public string Num { get; set; }
     public string Title { get; set; }
     public string Artist { get; set; }
@@ -32,6 +32,12 @@ public class Track {
     public string Path { get; set; }
     public bool Cached { get; set; }
     public string AlbumKey { get { return Artist + " - " + Album; } }
+    public event PropertyChangedEventHandler PropertyChanged;
+    bool playing; char glyph = '\uF04B';
+    public bool IsPlaying { get { return playing; } set { if (playing != value) { playing = value; Prop("IsPlaying"); Prop("Mark"); } } }
+    public void SetGlyph(char c) { if (glyph != c) { glyph = c; Prop("Mark"); } }
+    public string Mark { get { return playing ? glyph.ToString() : Num; } }
+    void Prop(string n) { var h = PropertyChanged; if (h != null) h(this, new PropertyChangedEventArgs(n)); }
 }
 
 public class MainWindow : Window {
@@ -201,6 +207,7 @@ public class MainWindow : Window {
 
         uiTimer.Tick += (s, e) => {
             btnPlay.Content = Glyph((int)wmp.playState == 3 ? '\uF04C' : '\uF04B');
+            if (playing != null) playing.SetGlyph((int)wmp.playState == 3 ? '\uF04C' : '\uF04B');
             double d = 0;
             try { if (wmp.currentMedia != null) d = wmp.currentMedia.duration; } catch { }
             if (d > 0) {
@@ -439,7 +446,8 @@ public class MainWindow : Window {
 
     void PlayItem(Track t, bool record = true) {
         if (t == null) return;
-        playing = t;
+        if (playing != null) playing.IsPlaying = false;
+        playing = t; t.IsPlaying = true;
         lv.SelectedItem = t; lv.ScrollIntoView(t);
         wmp.URL = t.Path;
         SetSeekFrac(0);
@@ -544,6 +552,19 @@ public class MainWindow : Window {
         hhov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(62, 62, 66) : Color.FromRgb(226, 226, 226))));
         hstyle.Triggers.Add(hhov);
         gv.ColumnHeaderContainerStyle = hstyle;
+        // Spalte "#": Glyph (FA, akzent) beim spielenden Track, sonst Nummer
+        var ctpl = new DataTemplate();
+        var ctb = new FrameworkElementFactory(typeof(TextBlock));
+        ctb.SetBinding(TextBlock.TextProperty, new Binding("Mark"));
+        var cst = new Style(typeof(TextBlock));
+        var pgt = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
+        pgt.Setters.Add(new Setter(TextBlock.FontFamilyProperty, fa));
+        pgt.Setters.Add(new Setter(TextBlock.ForegroundProperty, Acc));
+        cst.Triggers.Add(pgt);
+        ctb.SetValue(TextBlock.StyleProperty, cst);
+        ctpl.VisualTree = ctb;
+        gv.Columns[0].CellTemplate = ctpl;
+
         var gs = lv.GroupStyle[0];
         gs.HeaderTemplate = new DataTemplate();
         var f = new FrameworkElementFactory(typeof(TextBlock));
@@ -572,6 +593,9 @@ public class MainWindow : Window {
         var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
         sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
         st.Triggers.Add(sel);
+        var pl = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
+        pl.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(38, AccC.R, AccC.G, AccC.B))));
+        st.Triggers.Add(pl);
         var dim = new DataTrigger {
             Binding = new Binding("IsSorting") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Window), 1) }, Value = true };
         dim.Setters.Add(new Setter(Control.ForegroundProperty, NewBrush(Color.FromArgb(110, FgC.R, FgC.G, FgC.B))));
