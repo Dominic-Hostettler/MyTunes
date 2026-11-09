@@ -67,6 +67,11 @@ class DarkTable : ProfessionalColorTable {
     public override Color MenuItemPressedGradientEnd { get { return S; } }
     public override Color SeparatorDark { get { return S; } }
     public override Color ToolStripBorder { get { return S; } }
+    public override Color MenuStripGradientBegin { get { return B; } }
+    public override Color MenuStripGradientEnd { get { return B; } }
+    public override Color ToolStripGradientBegin { get { return B; } }
+    public override Color ToolStripGradientMiddle { get { return B; } }
+    public override Color ToolStripGradientEnd { get { return B; } }
     public override Color StatusStripGradientBegin { get { return B; } }
     public override Color StatusStripGradientEnd { get { return B; } }
 }
