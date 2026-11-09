@@ -49,6 +49,7 @@ public class Track : INotifyPropertyChanged {
     public string TagArtist { get; set; }
     public string TagTitle { get; set; }
     public string TagNum { get; set; }
+    public string TagAlbumArtist { get; set; }
     public string File { get; set; }
     void Prop(string n) { var h = PropertyChanged; if (h != null) h(this, new PropertyChangedEventArgs(n)); }
 }
@@ -511,6 +512,35 @@ public class MainWindow : Window {
 
     bool durBusy;
     int tagN, tagTotal, lastPs;
+    void RefreshTags(Track t) {   // einen Track im Hintergrund aktualisieren: Tags neu lesen + uebernehmen
+        new System.Threading.Thread(() => {
+            try {
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));
+                var folder = shell.NameSpace(System.IO.Path.GetDirectoryName(t.Path));
+                var fi = folder.ParseName(System.IO.Path.GetFileName(t.Path));
+                if (fi != null) {
+                    object v;
+                    Func<object, string> SV = o => {   // Multi-Value-Props sind string[] -> joinen
+                        if (o == null) return null;
+                        var a = o as object[]; if (a != null) return string.Join("; ", a);
+                        return o.ToString();
+                    };
+                    v = fi.ExtendedProperty("System.Music.AlbumTitle"); if (v != null) t.TagAlbum = SV(v);
+                    v = fi.ExtendedProperty("System.Music.Year"); if (v != null) t.Jahr = SV(v);
+                    v = fi.ExtendedProperty("System.Music.Genre"); if (v != null) t.Genre = SV(v);
+                    v = fi.ExtendedProperty("System.Music.Artist"); if (v != null) t.TagArtist = SV(v);
+                    v = fi.ExtendedProperty("System.Title"); if (v != null) t.TagTitle = SV(v);
+                    v = fi.ExtendedProperty("System.Music.TrackNumber"); if (v != null) t.TagNum = SV(v);
+                    v = fi.ExtendedProperty("System.Music.AlbumArtist"); if (v != null) t.TagAlbumArtist = SV(v);
+                }
+                ApplyTags(t);
+                WriteCache();
+                Dispatcher.BeginInvoke((Action)(() => lv.Items.Refresh()));
+                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
+            } catch { }
+        }) { IsBackground = true, ApartmentState = System.Threading.ApartmentState.STA }.Start();
+    }
+
     void ApplyTags(Track t) {   // Tags schlagen Dateinamen/Pfad (Ordnerstruktur nur Fallback)
         if (!string.IsNullOrEmpty(t.TagTitle)) t.Title = t.TagTitle;
         if (!string.IsNullOrEmpty(t.TagArtist)) t.Artist = t.TagArtist;
@@ -529,7 +559,7 @@ public class MainWindow : Window {
 
     void FillTagChunk(List<Track> list, int from, int to) {   // ein Thread: liest Teilmenge + flusht Cache
             dynamic wmp2 = null, wm = null; string lastDir = "\0"; dynamic folder = null;
-            int iAlb = -1, iJahr = -1, iGenre = -1, iArt = -1, iTitel = -1, iNum = -1;
+            int iAlb = -1, iJahr = -1, iGenre = -1, iArt = -1, iTitel = -1, iNum = -1, iAA = -1;
             try { dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application")); wmp2 = shell;
                 wm = Activator.CreateInstance(Type.GetTypeFromProgID("WMPlayer.OCX"));   // Tag-Fallback
                 for (int ti = from; ti < to; ti++) { var t = list[ti];
@@ -538,18 +568,19 @@ public class MainWindow : Window {
                     if (!string.IsNullOrEmpty(t.TagArtist)) t.Artist = t.TagArtist;
                     if (!string.IsNullOrEmpty(t.TagAlbum)) t.Album = t.TagAlbum;
                     int tn; if (int.TryParse((t.TagNum ?? "").Split('/')[0].Trim(), out tn)) t.Num = t.TagNum.Split('/')[0].Trim();
-                    if (t.TagAlbum != null && t.Jahr != null && t.Genre != null && t.TagArtist != null && t.TagTitle != null && t.TagNum != null) continue;
+                    if (t.TagAlbum != null && t.Jahr != null && t.Genre != null && t.TagArtist != null && t.TagTitle != null && t.TagNum != null && t.TagAlbumArtist != null) continue;
                     try { string dir = System.IO.Path.GetDirectoryName(t.Path), fn = System.IO.Path.GetFileName(t.Path);
                         if (dir != lastDir) {   // Index pro Ordner suchen (Ordner-Typ variiert)
-                            folder = shell.NameSpace(dir); lastDir = dir; iAlb = iJahr = iGenre = iArt = iTitel = iNum = -1;
+                            folder = shell.NameSpace(dir); lastDir = dir; iAlb = iJahr = iGenre = iArt = iTitel = iNum = iAA = -1;
                             for (int i = 0; i < 400; i++) { string nm = folder.GetDetailsOf(null, i); string l = nm == null ? "" : nm.ToLowerInvariant();
                                 if (l == "album") iAlb = i; else if (l == "jahr" || l == "year") iJahr = i; else if (l == "genre") iGenre = i;
                                 else if (l == "mitwirkende interpreten" || l == "contributing artists" || l == "interpret" || l == "artists") iArt = i;
+                                else if (l == "albuminterpret" || l == "album artist" || l == "album-interpret") iAA = i;
                                 else if (l == "titelnummer" || l == "track" || l == "track #" || l == "#") iNum = i;
                                 else if (l == "titel" || l == "title") iTitel = i;
-                                if (iAlb >= 0 && iJahr >= 0 && iGenre >= 0 && iArt >= 0 && iTitel >= 0 && iNum >= 0) break; }
+                                if (iAlb >= 0 && iJahr >= 0 && iGenre >= 0 && iArt >= 0 && iTitel >= 0 && iNum >= 0 && iAA >= 0) break; }
                         }
-                        if (folder == null) { t.TagAlbum = t.Jahr = t.Genre = t.TagArtist = t.TagTitle = t.TagNum = ""; continue; }
+                        if (folder == null) { t.TagAlbum = t.Jahr = t.Genre = t.TagArtist = t.TagTitle = t.TagNum = t.TagAlbumArtist = ""; continue; }
                         var fi = folder.ParseName(fn);
                         if (fi != null) {
                             if (iAlb >= 0 && t.TagAlbum == null) t.TagAlbum = folder.GetDetailsOf(fi, iAlb) ?? "";
@@ -558,6 +589,7 @@ public class MainWindow : Window {
                             if (iArt >= 0 && t.TagArtist == null) t.TagArtist = folder.GetDetailsOf(fi, iArt) ?? "";
                             if (iTitel >= 0 && t.TagTitle == null) t.TagTitle = folder.GetDetailsOf(fi, iTitel) ?? "";
                             if (iNum >= 0 && t.TagNum == null) t.TagNum = folder.GetDetailsOf(fi, iNum) ?? "";
+                            if (iAA >= 0 && t.TagAlbumArtist == null) t.TagAlbumArtist = folder.GetDetailsOf(fi, iAA) ?? "";
                             // Fallback: kanonische Property (Ordner ohne Album-Spaltenindex oder leere Shell-Werte)
                             if (string.IsNullOrEmpty(t.TagAlbum)) { try { var v = fi.ExtendedProperty("System.Music.AlbumTitle"); t.TagAlbum = v == null ? "" : v.ToString(); } catch { t.TagAlbum = ""; } }
                             if (string.IsNullOrEmpty(t.Jahr)) { try { var v = fi.ExtendedProperty("System.Music.Year"); t.Jahr = v == null ? "" : v.ToString(); } catch { t.Jahr = ""; } }
@@ -565,6 +597,7 @@ public class MainWindow : Window {
                             if (string.IsNullOrEmpty(t.TagArtist)) { try { var v = fi.ExtendedProperty("System.Music.Artist"); t.TagArtist = v == null ? "" : v.ToString(); } catch { t.TagArtist = ""; } }
                             if (string.IsNullOrEmpty(t.TagTitle)) { try { var v = fi.ExtendedProperty("System.Title"); t.TagTitle = v == null ? "" : v.ToString(); } catch { t.TagTitle = ""; } }
                             if (string.IsNullOrEmpty(t.TagNum)) { try { var v = fi.ExtendedProperty("System.Music.TrackNumber"); t.TagNum = v == null ? "" : v.ToString(); } catch { t.TagNum = ""; } }
+                            if (string.IsNullOrEmpty(t.TagAlbumArtist)) { try { var v = fi.ExtendedProperty("System.Music.AlbumArtist"); t.TagAlbumArtist = v == null ? "" : v.ToString(); } catch { t.TagAlbumArtist = ""; } }
                         }
                         if (string.IsNullOrEmpty(t.TagAlbum) && string.IsNullOrEmpty(t.TagArtist) && string.IsNullOrEmpty(t.TagTitle)) {   // Drive-Platzhalter -> WMP liest Tags
                             try { var md = wm.newMedia(t.Path);
@@ -574,11 +607,12 @@ public class MainWindow : Window {
                                 if (t.TagArtist == null || t.TagArtist == "") { var v = md.getItemInfo("Author"); t.TagArtist = v ?? ""; }
                                 if (t.TagTitle == null || t.TagTitle == "") { var v = md.getItemInfo("Title"); t.TagTitle = v ?? ""; }
                                 if (t.TagNum == null || t.TagNum == "") { var v = md.getItemInfo("WM/TrackNumber"); t.TagNum = v ?? ""; }
+                                if (t.TagAlbumArtist == null || t.TagAlbumArtist == "") { var v = md.getItemInfo("WM/AlbumArtist"); t.TagAlbumArtist = v ?? ""; }
                             } catch { }
                         }
                         t.TagAlbum = t.TagAlbum ?? ""; t.Jahr = t.Jahr ?? ""; t.Genre = t.Genre ?? "";
-                        t.TagArtist = t.TagArtist ?? ""; t.TagTitle = t.TagTitle ?? ""; t.TagNum = t.TagNum ?? "";
-                    } catch { t.TagAlbum = t.Jahr = t.Genre = t.TagArtist = t.TagTitle = t.TagNum = ""; }
+                        t.TagArtist = t.TagArtist ?? ""; t.TagTitle = t.TagTitle ?? ""; t.TagNum = t.TagNum ?? ""; t.TagAlbumArtist = t.TagAlbumArtist ?? "";
+                    } catch { t.TagAlbum = t.Jahr = t.Genre = t.TagArtist = t.TagTitle = t.TagNum = t.TagAlbumArtist = ""; }
                     int cn = System.Threading.Interlocked.Increment(ref tagN);
                     if (cn % 200 == 0 || cn == tagTotal) { WriteCache(); Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); statusLbl.Text = items.Count + S(" Tracks (Tags ", " tracks (tags ") + cn + "/" + tagTotal + ")"; })); }
                 }
@@ -853,13 +887,14 @@ public class MainWindow : Window {
     }
     string lastSort, typeBuf = ""; int lastDir, lastClickTick, typeTick;
     Window infoWin;
+    string infoAck;
     public static readonly DependencyProperty IsSortingProperty =
         DependencyProperty.Register("IsSorting", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public bool IsSorting { get { return (bool)GetValue(IsSortingProperty); } set { SetValue(IsSortingProperty, value); } }
 
     // ---------- Scan/Cache ----------
     Track Parse(string fullName, bool cached) {
-        string dur = null, tagAlbum = null, jahr = null, genre = null, tagArtist = null, tagTitle = null, tagNum = null; long len = 0, mt = 0, ct = 0;
+        string dur = null, tagAlbum = null, jahr = null, genre = null, tagArtist = null, tagTitle = null, tagNum = null, tagAA = null; long len = 0, mt = 0, ct = 0;
         if (cached) {   // Cache-Zeile: pfad|len|modTicks|creTicks|dur
             var p = fullName.Split('|');
             fullName = p[0];
@@ -868,12 +903,13 @@ public class MainWindow : Window {
                 dur = p[4].Length > 0 ? p[4] : null;
                 if (p.Length > 7) { tagAlbum = p[5].Length > 0 ? p[5] : null; jahr = p[6].Length > 0 ? p[6] : null; genre = p[7].Length > 0 ? p[7] : null; }
                 if (p.Length > 10) { tagArtist = p[8].Length > 0 ? p[8] : null; tagTitle = p[9].Length > 0 ? p[9] : null; tagNum = p[10].Length > 0 ? p[10] : null; }
+                if (p.Length > 11) tagAA = p[11].Length > 0 ? p[11] : null;
             }
         }
         var title = System.IO.Path.GetFileNameWithoutExtension(fullName); var num = "";   // Dateiname -> Titel (kein Ordner-Ableiten)
         var m = System.Text.RegularExpressions.Regex.Match(title, @"^(\d+)\s+(.+)$");
         if (m.Success) { num = m.Groups[1].Value; title = m.Groups[2].Value; }
-        var t = new Track { Num = num, Title = title, Artist = "", Album = "", Path = fullName, Cached = cached, File = System.IO.Path.GetFileName(fullName), Len = len, Dur = dur, DurSec = DurToSec(dur), TagAlbum = tagAlbum, Jahr = jahr, Genre = genre, TagArtist = tagArtist, TagTitle = tagTitle, TagNum = tagNum };
+        var t = new Track { Num = num, Title = title, Artist = "", Album = "", Path = fullName, Cached = cached, File = System.IO.Path.GetFileName(fullName), Len = len, Dur = dur, DurSec = DurToSec(dur), TagAlbum = tagAlbum, Jahr = jahr, Genre = genre, TagArtist = tagArtist, TagTitle = tagTitle, TagNum = tagNum, TagAlbumArtist = tagAA };
         ApplyTags(t);   // gecachte Tags sofort in die Anzeigefelder
         if (cached) { if (mt > 0) t.Modified = new DateTime(mt); if (ct > 0) t.Created = new DateTime(ct); }
         else {   // Datei-Meta nur im Scan-Pfad, Cache-Start bleibt instant
@@ -890,7 +926,7 @@ public class MainWindow : Window {
     }
 
     void WriteCache() {
-        try { File.WriteAllLines(Cache, items.Select(t => t.Path + "|" + t.Len + "|" + t.Modified.Ticks + "|" + t.Created.Ticks + "|" + t.Dur + "|" + t.TagAlbum + "|" + t.Jahr + "|" + t.Genre + "|" + t.TagArtist + "|" + t.TagTitle + "|" + t.TagNum)); } catch { }
+        try { File.WriteAllLines(Cache, items.Select(t => t.Path + "|" + t.Len + "|" + t.Modified.Ticks + "|" + t.Created.Ticks + "|" + t.Dur + "|" + t.TagAlbum + "|" + t.Jahr + "|" + t.Genre + "|" + t.TagArtist + "|" + t.TagTitle + "|" + t.TagNum + "|" + t.TagAlbumArtist)); } catch { }
     }
 
     IEnumerable<string> EnumFiles(string root) {
@@ -980,6 +1016,7 @@ public class MainWindow : Window {
         playing = t; t.IsPlaying = true;
         lv.SelectedItem = t; lv.ScrollIntoView(t);
         wmp.URL = t.Path;
+        RefreshTags(t);   // gespielten Track im Hintergrund aktualisieren (korrigierte Tags uebernehmen)
         SetSeekFrac(0);
         nowLbl.Inlines.Clear();
         nowLbl.Inlines.Add(new System.Windows.Documents.Run(t.Title) { FontWeight = FontWeights.Bold });
@@ -1200,24 +1237,106 @@ public class MainWindow : Window {
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var rows = new string[][] {
-            new[] { S("Titel", "Title"), t.Title }, new[] { S("Interpret", "Artist"), t.Artist }, new[] { "Album", t.Album },
-            new[] { S("Nummer", "Number"), t.Num }, new[] { S("Dateiname", "Filename"), t.File },
-            new[] { S("Dauer", "Length"), t.Dur ?? "" },
-            new[] { S("Größe", "Size"), t.Len > 0 ? (t.Len / 1024.0).ToString("N1") + " MB" : "" },
-            new[] { S("Geändert", "Modified"), t.Modified.Year > 2000 ? t.Modified.ToString("dd.MM.yyyy HH:mm") : "" },
-            new[] { S("Erstellt", "Created"), t.Created.Year > 2000 ? t.Created.ToString("dd.MM.yyyy HH:mm") : "" },
-            new[] { S("Pfad", "Path"), t.Path }
+            new[] { S("Titel", "Title"), t.Title, "T" }, new[] { S("Interpret", "Artist"), t.Artist, "I" }, new[] { "Album", t.Album, "A" },
+            new[] { S("Album-Interpret", "Album artist"), t.TagAlbumArtist ?? "", "AA" },
+            new[] { S("Nummer", "Number"), t.Num, "N" }, new[] { S("Jahr", "Year"), t.Jahr ?? "", "J" },
+            new[] { "Genre", t.Genre ?? "", "G" },
+            new[] { S("Dateiname", "Filename"), t.File, "F" },
+            new[] { S("Dauer", "Length"), t.Dur ?? "", "" },
+            new[] { S("Größe", "Size"), t.Len > 0 ? (t.Len / 1024.0).ToString("N1") + " MB" : "", "" },
+            new[] { S("Geändert", "Modified"), t.Modified.Year > 2000 ? t.Modified.ToString("dd.MM.yyyy HH:mm") : "", "" },
+            new[] { S("Erstellt", "Created"), t.Created.Year > 2000 ? t.Created.ToString("dd.MM.yyyy HH:mm") : "", "" },
+            new[] { S("Pfad", "Path"), t.Path, "" }
         };
+        var edit = new Dictionary<string, TextBox>();
         for (int i = 0; i < rows.Length; i++) {
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var l = new TextBlock { Text = rows[i][0], Foreground = Dim, Margin = new Thickness(0, 4, 16, 4) };
-            var v = new TextBox { Text = rows[i][1], IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Foreground = Fg, Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+            bool ed = rows[i][2] != "";
+            var v = new TextBox { Text = rows[i][1], IsReadOnly = !ed, BorderThickness = ed ? new Thickness(0, 0, 0, 1) : new Thickness(0), BorderBrush = Sep, Background = Brushes.Transparent, Foreground = Fg, Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+            if (ed) edit[rows[i][2]] = v;
             Grid.SetRow(l, i); Grid.SetRow(v, i); Grid.SetColumn(v, 1);
             g.Children.Add(l); g.Children.Add(v);
+        }
+        var sv = new Button { Content = S("Speichern", "Save"), Padding = new Thickness(14, 4, 14, 4), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0), Cursor = Cursors.Hand };
+        sv.Click += (s, e) => SaveTrackTags(t, edit["T"].Text, edit["A"].Text, edit["AA"].Text, edit["N"].Text, edit["F"].Text, edit["I"].Text, edit["J"].Text, edit["G"].Text);
+        g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(sv, rows.Length); Grid.SetColumn(sv, 1);
+        g.Children.Add(sv);
+        if (infoAck != null) {   // kurze Save-Bestaetigung unterm Button
+            var ack = new TextBlock { Text = infoAck, Foreground = Acc, Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Right };
+            Grid.SetRow(ack, rows.Length); g.Children.Add(ack);
+            var tm = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            tm.Tick += (s2, e2) => { tm.Stop(); g.Children.Remove(ack); };
+            tm.Start();
+            infoAck = null;
         }
         infoWin.Content = g;
         if (!infoWin.IsVisible) infoWin.Show();
         infoWin.Activate();
+    }
+
+    // ---------- ID3v2-Tag schreiben (TPE1/TYER/TCON, ohne Bibliothek) ----------
+    byte[] ID3Frame(string id, string text) {
+        var enc = System.Text.Encoding.Unicode.GetBytes("\xFF\xFE" + text);   // UTF-16 mit BOM-Marker
+        var f = new byte[11 + enc.Length];
+        System.Text.Encoding.ASCII.GetBytes(id).CopyTo(f, 0);
+        var sz = BitConverter.GetBytes(1 + enc.Length); Array.Reverse(sz); Array.Copy(sz, 0, f, 4, 4);
+        f[10] = 1; Array.Copy(enc, 0, f, 11, enc.Length);   // Encoding-Byte 1 = UTF-16
+        return f;
+    }
+    int SyncSafe(byte[] b, int o) { return (b[o] << 21) | (b[o + 1] << 14) | (b[o + 2] << 7) | b[o + 3]; }
+    void WriteID3(string path, Dictionary<string, string> vals) {
+        var b = File.ReadAllBytes(path);
+        int tagEnd = 0; bool v4 = false;
+        bool isMp3 = path.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase);
+        var frames = new List<byte[]>();
+        if (b.Length >= 10 && b[0] == 'I' && b[1] == 'D' && b[2] == '3' && (b[3] == 3 || b[3] == 4)) {
+            tagEnd = 10 + SyncSafe(b, 6); v4 = b[3] == 4;
+            int pos = 10;
+            while (pos + 10 <= tagEnd && pos + 10 <= b.Length) {
+                var id = System.Text.Encoding.ASCII.GetString(b, pos, 4);
+                if (id[0] == 0) break;
+                int fs = v4 ? SyncSafe(b, pos + 4) : (b[pos + 4] << 24) | (b[pos + 5] << 16) | (b[pos + 6] << 8) | b[pos + 7];
+                if (fs <= 0 || pos + 10 + fs > b.Length) break;
+                var f = new byte[10 + fs]; Array.Copy(b, pos, f, 0, f.Length);
+                if (!vals.ContainsKey(id)) frames.Add(f);   // andere Frames behalten
+                pos += 10 + fs;
+            }
+        }
+        foreach (var kv in vals) if (!string.IsNullOrEmpty(kv.Value)) frames.Add(ID3Frame(kv.Key, kv.Value));   // leer -> Frame loeschen
+        int padLen = 128;
+        var body = frames.SelectMany(f => f).ToArray();
+        var tag = new byte[10 + body.Length + padLen];
+        System.Text.Encoding.ASCII.GetBytes("ID3").CopyTo(tag, 0); tag[3] = 3;
+        int sl = body.Length + padLen;   // Syncsafe-Groesse schreiben
+        tag[6] = (byte)((sl >> 21) & 127); tag[7] = (byte)((sl >> 14) & 127); tag[8] = (byte)((sl >> 7) & 127); tag[9] = (byte)(sl & 127);
+        Array.Copy(body, 0, tag, 10, body.Length);
+        if (tagEnd == 0 && !isMp3) return;   // kein ID3-Format -> nichts voranhaengen (sonst Datei kaputt)
+        var outp = tagEnd > 0 ? tag.Concat(b.Skip(tagEnd)).ToArray() : tag.Concat(b).ToArray();
+        File.WriteAllBytes(path, outp);
+    }
+
+    void SaveTrackTags(Track t, string title, string album, string albumArtist, string num, string file, string artist, string jahr, string genre) {   // echte ID3-Tags via WinRT + ID3v2 (powershell spawn)
+        new System.Threading.Thread(() => SaveTrackTagsWork(t, title, album, albumArtist, num, file, artist, jahr, genre)).Start();
+    }
+    void SaveTrackTagsWork(Track t, string title, string album, string albumArtist, string num, string file, string artist, string jahr, string genre) {
+        if (!string.IsNullOrEmpty(file) && file != t.File) {   // Dateiname = echtes Umbenennen (leer = nicht essentiell)
+            try { var np = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(t.Path), file); File.Move(t.Path, np); t.Path = np; } catch { }
+            t.File = file;
+        }
+        try {   // alle Felder via ID3v2 (leer = Frame loeschen)
+            WriteID3(t.Path, new Dictionary<string, string> {
+                { "TIT2", title }, { "TALB", album }, { "TPE2", albumArtist }, { "TRCK", num },
+                { "TPE1", artist }, { "TYER", jahr }, { "TCON", genre } });
+        } catch { }
+        t.TagTitle = title; t.TagAlbum = album; t.TagAlbumArtist = albumArtist; t.TagNum = num;
+        t.TagArtist = artist; t.Jahr = jahr; t.Genre = genre;
+        t.Title = title; t.Album = album; t.Artist = artist;   // gespeicherte Werte direkt (auch geleerte)
+        int nn; t.Num = int.TryParse((num ?? "").Split('/')[0].Trim(), out nn) ? num.Split('/')[0].Trim() : num;
+        WriteCache();
+        infoAck = "✓ " + S("gespeichert", "saved");   // erscheint im Info-Fenster
+        Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); ShowInfo(t); }));
     }
 
     // ---------- Fenster-Persistenz ----------

@@ -48,6 +48,7 @@ Musik-Pfad wird über `Datei > Quellordner wählen...` gesetzt und in `root.txt`
 
 ## Hinweise
 
+- **Defender/SmartScreen:** Die selbst gebaute `MyTunes.exe` kann als "ungewöhnlich" markiert werden (unsigniert). Lokal gebaute Dateien sind meist unproblematisch — falls doch: Windows-Sicherheit → Ausnahmen → Ordner ausschließen.
 - Der erste Tag-Lauf dauert bei großen Sammlungen etwas (liest alle Dateien einmal), danach kommt alles aus dem Cache.
 - Tags nachträglich im Explorer geändert? `tracks.txt` löschen → Neubau.
 - Wiedergabe über Windows Media Player (COM) — FLAC o.ä. nur wenn WMP es kann.
