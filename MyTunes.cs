@@ -33,10 +33,10 @@ public class Track : INotifyPropertyChanged {
     public bool Cached { get; set; }
     public string AlbumKey { get { return Artist + " - " + Album; } }
     public event PropertyChangedEventHandler PropertyChanged;
-    bool playing; char glyph = '\u25B6';
+    bool playing; string glyph = "\u25B6";
     public bool IsPlaying { get { return playing; } set { if (playing != value) { playing = value; Prop("IsPlaying"); Prop("Mark"); } } }
-    public void SetGlyph(char c) { if (glyph != c) { glyph = c; Prop("Mark"); } }
-    public string Mark { get { return playing ? glyph.ToString() : Num; } }
+    public void SetGlyph(string c) { if (glyph != c) { glyph = c; Prop("Mark"); } }
+    public string Mark { get { return playing ? glyph : Num; } }
     void Prop(string n) { var h = PropertyChanged; if (h != null) h(this, new PropertyChangedEventArgs(n)); }
 }
 
@@ -53,9 +53,11 @@ public class MainWindow : Window {
     Button btnPrev, btnPlay, btnNext;
     TextBlock nowLbl, timeLbl, statusLbl, revealIco;
     Track playing;
-    Slider vol;
-    Grid seek; Border seekFill, seekTrack, bar;
-    Ellipse seekThumb;
+    Grid seek, volBar;
+    Border seekFill, seekTrack, bar, vFill, vTrack;
+    Ellipse seekThumb, vThumb;
+    bool muted;
+    double volFrac = 0.8;
     Menu menu; StatusBar sb;
     FontFamily fa;
 
@@ -98,14 +100,12 @@ public class MainWindow : Window {
         var mBearb = new MenuItem { Header = "Bearbeiten" };
         mBearb.Items.Add(MI('\uF0E2', "Rückgängig", "Strg+Z", () => Undo()));
         mBearb.Items.Add(MI('\uF01E', "Wiederherstellen", "Strg+Y", () => Redo()));
-        mBearb.Items.Add(new Separator());
         mBearb.Items.Add(MI('\uF0C4', "Ausschneiden", "Strg+X", () => CopyTracks(true)));
         mBearb.Items.Add(MI('\uF0C5', "Kopieren", "Strg+C", () => CopyTracks(false)));
         mBearb.Items.Add(MI('\uF328', "Einfügen", "Strg+V", () => PasteTracks()));
-        mBearb.Items.Add(new Separator());
         mBearb.Items.Add(MI('\uF14A', "Alles auswählen", "Strg+A", () => lv.SelectAll()));
-        mBearb.Items.Add(new Separator());
         mBearb.Items.Add(MI('\uF002', "Seite durchsuchen...", "Strg+F", () => SearchTracks()));
+        mBearb.Items.Add(MI('\uF002', "Zum gespielten Track", "Strg+L", () => RevealPlaying()));
         var mAnsicht = new MenuItem { Header = "Ansicht" };
         var mDark = new MenuItem { Header = "Dunkelmodus", IsCheckable = true };
         mDark.Checked += (s, e) => SetDark(true);
@@ -141,11 +141,27 @@ public class MainWindow : Window {
         btnPlay.Click += (s, e) => TogglePlay();
         btnNext.Click += (s, e) => Step(1);
         nowLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 8, 0), Foreground = Brushes.Gray, TextTrimming = TextTrimming.CharacterEllipsis };
-        revealIco = new TextBlock { Text = "\uF002", FontFamily = fa, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), Cursor = Cursors.Hand, ToolTip = "Zum gespielten Track springen" };
+        revealIco = new TextBlock { Text = "\uF002", FontFamily = fa, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(6, 0, 0, 0), Cursor = Cursors.Hand, ToolTip = "Zum gespielten Track springen" };
         revealIco.MouseLeftButtonUp += (s, e) => RevealPlaying();
-        var volIco = new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 6, 0) };
-        vol = new Slider { Maximum = 100, Value = 80, Width = 140, VerticalAlignment = VerticalAlignment.Center };
-        vol.ValueChanged += (s, e) => wmp.settings.volume = (int)vol.Value;
+        var volIco = new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), VerticalAlignment = VerticalAlignment.Center, Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(18, 0, 2, 0), Cursor = Cursors.Hand, ToolTip = "Stumm" };
+        volIco.MouseLeftButtonUp += (s, e) => {
+            muted = !muted;
+            wmp.settings.mute = muted;
+            volIco.Text = muted ? "\uE74F" : "\uE767";
+            vFill.Background = muted ? Brushes.Gray : Acc;   // Fuellung grau bei Mute
+        };
+        // eigene schmale Lautstaerke-Leiste (wie Seek-Bar): Fuellung grau bei Mute
+        volBar = new Grid { Width = 150, Height = 26, Cursor = Cursors.Hand, VerticalAlignment = VerticalAlignment.Center };
+        vTrack = new Border { Height = 4, CornerRadius = new CornerRadius(2), VerticalAlignment = VerticalAlignment.Center };
+        vFill = new Border { Height = 4, CornerRadius = new CornerRadius(2), HorizontalAlignment = HorizontalAlignment.Left };
+        vThumb = new Ellipse { Width = 10, Height = 10, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
+        volBar.Children.Add(vTrack); volBar.Children.Add(vFill); volBar.Children.Add(vThumb);
+        SetVol(0.8);
+        bool vSeek = false;
+        volBar.MouseLeftButtonDown += (s, e) => { vSeek = true; volBar.CaptureMouse(); VolAt(e.GetPosition(volBar).X); };
+        volBar.MouseMove += (s, e) => { if (vSeek) VolAt(e.GetPosition(volBar).X); };
+        volBar.MouseLeftButtonUp += (s, e) => { vSeek = false; volBar.ReleaseMouseCapture(); };
+        volBar.SizeChanged += (s, e) => SetVol(volFrac);   // Breite erst nach Layout bekannt
         timeLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0), Foreground = Brushes.Gray };
         var seekRow = new DockPanel { Margin = new Thickness(12, 0, 12, 0) };
         DockPanel.SetDock(timeLbl, Dock.Left);
@@ -155,11 +171,16 @@ public class MainWindow : Window {
         DockPanel.SetDock(seekRow, Dock.Top);
         barTop.Children.Add(seekRow);
         var right = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var c in new UIElement[] { volIco, vol }) right.Children.Add(c);
+        foreach (var c in new UIElement[] { volIco, volBar }) right.Children.Add(c);
         DockPanel.SetDock(right, Dock.Right);
         DockPanel.SetDock(revealIco, Dock.Right);
-        var barFlow = new DockPanel { Margin = new Thickness(12, 6, 12, 6), LastChildFill = true };
-        foreach (var c in new UIElement[] { btnPrev, btnPlay, btnNext, right, revealIco, nowLbl }) barFlow.Children.Add(c);
+        var transport = new Grid { Width = 186 };
+        for (int i = 0; i < 3; i++) transport.ColumnDefinitions.Add(new ColumnDefinition());
+        Grid.SetColumn(btnPrev, 0); Grid.SetColumn(btnPlay, 1); Grid.SetColumn(btnNext, 2);
+        transport.Children.Add(btnPrev); transport.Children.Add(btnPlay); transport.Children.Add(btnNext);
+        DockPanel.SetDock(transport, Dock.Left);
+        var barFlow = new DockPanel { Margin = new Thickness(12, 6, 12, 6), LastChildFill = true, MinHeight = 52 };
+        foreach (var c in new UIElement[] { transport, right, revealIco, nowLbl }) barFlow.Children.Add(c);
         barTop.Children.Add(barFlow);
         bar = new Border { Child = barTop, Padding = new Thickness(0), BorderThickness = new Thickness(0, 1, 0, 0) };
         DockPanel.SetDock(bar, Dock.Bottom);
@@ -181,7 +202,11 @@ public class MainWindow : Window {
         lv.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler(OnHeaderClick));
         lv.MouseDoubleClick += (s, e) => { if (lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };
         lv.PreviewKeyDown += (s, e) => {
-            if (e.Key == Key.Enter && lv.SelectedItem != null) { PlayItem((Track)lv.SelectedItem); e.Handled = true; }
+            if (e.Key == Key.Enter) {
+                var fe = Keyboard.FocusedElement as FrameworkElement;
+                var t = (fe != null ? fe.DataContext : null) as Track ?? lv.SelectedItem as Track ?? view.Cast<Track>().FirstOrDefault();
+                if (t != null) { PlayItem(t); e.Handled = true; }
+            }
         };
         lv.PreviewMouseLeftButtonDown += (s, e) => dragStart = e.GetPosition(lv);
         lv.PreviewMouseMove += (s, e) => {
@@ -211,6 +236,7 @@ public class MainWindow : Window {
                 case Key.V: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) PasteTracks(); break;
                 case Key.A: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { lv.SelectAll(); e.Handled = true; } break;
                 case Key.F: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) SearchTracks(); break;
+                case Key.L: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { RevealPlaying(); e.Handled = true; } break;
             }
         };
 
@@ -220,8 +246,9 @@ public class MainWindow : Window {
         seek.MouseLeftButtonUp += (s, e) => { seeking = false; seek.ReleaseMouseCapture(); SeekTo(e.GetPosition(seek).X); };
 
         uiTimer.Tick += (s, e) => {
-            btnPlay.Content = Glyph((int)wmp.playState == 3 ? '\u23F8' : '\u25B6');
-            if (playing != null) playing.SetGlyph((int)wmp.playState == 3 ? '\u23F8' : '\u25B6');
+            btnPlay.Content = Glyph((int)wmp.playState == 3 ? '\uF04C' : '\uF04B');
+            var pc = btnPlay.Content as TextBlock; if (pc != null) pc.Foreground = btnPlay.IsMouseOver ? Acc : Fg;
+            if (playing != null) playing.SetGlyph((int)wmp.playState == 3 ? "\u25B6" : "\u275A\u275A");
             double d = 0;
             try { if (wmp.currentMedia != null) d = wmp.currentMedia.duration; } catch { }
             if (d > 0) {
@@ -243,21 +270,27 @@ public class MainWindow : Window {
     // ---------- UI-Helfer ----------
     SolidColorBrush NewBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
 
-    Button Btn(char c) {
-        var b = new Button { Content = Glyph(c), Width = 52, Height = 40, Margin = new Thickness(0, 0, 4, 0) };
+    ControlTemplate FlatBtnTemplate() {
         var tpl = new ControlTemplate(typeof(Button));
         var bd = new FrameworkElementFactory(typeof(Border));
-        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
-        bd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        bd.SetValue(Border.BackgroundProperty, Brushes.Transparent);   // unsichtbar, aber hit-testbar
         var cp = new FrameworkElementFactory(typeof(ContentPresenter));
         cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
         cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        cp.Name = "cp";
         bd.AppendChild(cp);
         tpl.VisualTree = bd;
         var trig = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        trig.Setters.Add(new Setter(Button.BackgroundProperty, NewBrush(Color.FromArgb(70, 0, 120, 215))));
+        trig.Setters.Add(new Setter(TextElement.ForegroundProperty, Acc ?? NewBrush(Color.FromRgb(0, 120, 215)), "cp"));
         tpl.Triggers.Add(trig);
-        b.Template = tpl; b.Background = Brushes.Transparent;
+        return tpl;
+    }
+
+    Button Btn(char c) {
+        var b = new Button { Content = Glyph(c), VerticalAlignment = VerticalAlignment.Stretch, Cursor = Cursors.Hand };
+        b.Template = FlatBtnTemplate();
+        b.MouseEnter += (s, e) => { var t = b.Content as TextBlock; if (t != null) t.Foreground = Acc; };   // Glyph blau
+        b.MouseLeave += (s, e) => { var t = b.Content as TextBlock; if (t != null) t.Foreground = Fg; };
         return b;
     }
 
@@ -272,13 +305,19 @@ public class MainWindow : Window {
         return mi;
     }
     void SetItemColors(MenuItem mi, Brush bg, Brush fg) {
-        mi.Background = bg; mi.Foreground = fg; mi.BorderBrush = Sep; mi.Style = FlatMenuItemStyle();
-        foreach (var c in mi.Items) { var s = c as MenuItem; if (s != null) SetItemColors(s, bg, fg); }
+        mi.Foreground = fg; mi.BorderBrush = Sep; mi.Style = FlatMenuItemStyle();
+        foreach (var c in mi.Items) {
+            var s = c as MenuItem;
+            if (s != null) SetItemColors(s, bg, fg);
+            var sp = c as Separator;
+            if (sp != null) sp.Height = 0;
+        }
     }
 
     // flaches MenuItem-Template: Border+Content+Popup, kein Aero-Highlight
     Style FlatMenuItemStyle() {
         var st = new Style(typeof(MenuItem));
+        st.Setters.Add(new Setter(MenuItem.BackgroundProperty, Ctl));   // Setter < Trigger -> Hover greift
         var tpl = new ControlTemplate(typeof(MenuItem));
         var bd = new FrameworkElementFactory(typeof(Border));
         var rs = new RelativeSource(RelativeSourceMode.TemplatedParent);
@@ -287,16 +326,18 @@ public class MainWindow : Window {
         var cp = new FrameworkElementFactory(typeof(ContentPresenter));
         cp.SetBinding(ContentPresenter.ContentProperty, new Binding("Header") { RelativeSource = rs });
         cp.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("HeaderTemplate") { RelativeSource = rs });
-        cp.SetValue(ContentPresenter.MarginProperty, new Thickness(10, 5, 10, 5));
+        cp.SetValue(ContentPresenter.MarginProperty, new Thickness(14, 7, 14, 7));
         cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         var pop = new FrameworkElementFactory(typeof(Popup));
         pop.SetBinding(Popup.IsOpenProperty, new Binding("IsSubmenuOpen") { RelativeSource = rs });
         pop.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
         pop.SetValue(Popup.AllowsTransparencyProperty, true);
         var pbd = new FrameworkElementFactory(typeof(Border));
-        pbd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = rs });
-        pbd.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = rs });
-        pbd.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        pbd.SetValue(Border.BackgroundProperty, Ctl);   // exakt dieselbe Brush wie die Zeilen
+        pbd.SetValue(Border.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 26, ShadowDepth = 4, Opacity = 0.33 });
+        pbd.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+        pbd.SetValue(Border.PaddingProperty, new Thickness(3));   // Mini-Puffer, damit eckige Zeilen nicht in den Radius stossen
+        pbd.SetValue(Border.MarginProperty, new Thickness(8));
         var host = new FrameworkElementFactory(typeof(StackPanel));
         host.SetValue(StackPanel.IsItemsHostProperty, true);
         pbd.AppendChild(host); pop.AppendChild(pbd);
@@ -322,6 +363,15 @@ public class MainWindow : Window {
         rtb.Render(dv); rtb.Freeze();
         return rtb;
     }
+
+    void SetVol(double f) {
+        f = Math.Max(0, Math.Min(1, f));
+        volFrac = f;
+        vFill.Width = f * volBar.ActualWidth;
+        vThumb.Margin = new Thickness(Math.Max(0, f * volBar.ActualWidth - 5), 0, 0, 0);
+        wmp.settings.volume = (int)(f * 100);
+    }
+    void VolAt(double x) { if (volBar.ActualWidth > 0) SetVol(x / volBar.ActualWidth); }
 
     void SetSeekFrac(double f) {
         f = Math.Max(0, Math.Min(1, f));
@@ -461,7 +511,8 @@ public class MainWindow : Window {
     void Step(int d) {
         var view = CollectionViewSource.GetDefaultView(items);
         var ordered = view.Cast<Track>().ToList();
-        int cur = lv.SelectedItem != null ? ordered.IndexOf((Track)lv.SelectedItem) : -1;
+        var ref_ = playing ?? lv.SelectedItem as Track;
+        int cur = ref_ != null ? ordered.IndexOf(ref_) : -1;
         int n = cur >= 0 ? cur + d : 0;
         if (n >= 0 && n < ordered.Count) PlayItem(ordered[n]);
     }
@@ -528,10 +579,12 @@ public class MainWindow : Window {
         bar.Background = Ctl; bar.BorderBrush = Sep;
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
         seekFill.Background = Acc; seekThumb.Fill = Acc;
+        vTrack.Background = seekTrack.Background;
+        vFill.Background = muted ? Brushes.Gray : Acc; vThumb.Fill = Acc;
         nowLbl.Foreground = Dim; timeLbl.Foreground = Dim;
         revealIco.Style = IconHoverStyle();   // Style statt Direktwert, sonst schlaegt Local-Value den Trigger
         statusLbl.Foreground = Fg;
-        foreach (var b in new[] { btnPrev, btnPlay, btnNext }) b.Foreground = Fg;
+        foreach (var b in new[] { btnPrev, btnPlay, btnNext }) { b.Foreground = Fg; b.Template = FlatBtnTemplate(); }
         // ListView: Zeilen, Selektion, Header und Gruppentitel einfaerben
         lv.ItemContainerStyle = RowStyle();
         var hstyle = new Style(typeof(GridViewColumnHeader));
