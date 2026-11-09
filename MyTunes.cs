@@ -45,7 +45,8 @@ public class MainWindow : Window {
     ListView lv; GridView gv;
     dynamic wmp;
     Button btnPrev, btnPlay, btnNext;
-    TextBlock nowLbl, timeLbl, statusLbl;
+    TextBlock nowLbl, timeLbl, statusLbl, revealIco;
+    Track playing;
     Slider vol;
     Grid seek; Border seekFill, seekTrack, bar;
     Ellipse seekThumb;
@@ -128,6 +129,8 @@ public class MainWindow : Window {
         btnPlay.Click += (s, e) => TogglePlay();
         btnNext.Click += (s, e) => Step(1);
         nowLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0), Foreground = Brushes.Gray };
+        revealIco = new TextBlock { Text = "\uF002", FontFamily = fa, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), Cursor = Cursors.Hand, ToolTip = "Zum gespielten Track springen" };
+        revealIco.MouseLeftButtonUp += (s, e) => RevealPlaying();
         var volIco = new TextBlock { Text = "\uE767", FontFamily = new FontFamily("Segoe MDL2 Assets"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 6, 0) };
         vol = new Slider { Maximum = 100, Value = 80, Width = 140, VerticalAlignment = VerticalAlignment.Center };
         vol.ValueChanged += (s, e) => wmp.settings.volume = (int)vol.Value;
@@ -136,7 +139,7 @@ public class MainWindow : Window {
         DockPanel.SetDock(seek, Dock.Top);
         barTop.Children.Add(seek);
         var barFlow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 6, 0, 6) };
-        foreach (var c in new UIElement[] { btnPrev, btnPlay, btnNext, nowLbl, volIco, vol, timeLbl }) barFlow.Children.Add(c);
+        foreach (var c in new UIElement[] { btnPrev, btnPlay, btnNext, nowLbl, revealIco, volIco, vol, timeLbl }) barFlow.Children.Add(c);
         barTop.Children.Add(barFlow);
         bar = new Border { Child = barTop, Padding = new Thickness(0), BorderThickness = new Thickness(0, 1, 0, 0) };
         DockPanel.SetDock(bar, Dock.Bottom);
@@ -407,8 +410,13 @@ public class MainWindow : Window {
     }
 
     // ---------- Wiedergabe ----------
+    void RevealPlaying() {
+        if (playing != null && items.Contains(playing)) { lv.SelectedItem = playing; lv.ScrollIntoView(playing); }
+    }
+
     void PlayItem(Track t, bool record = true) {
         if (t == null) return;
+        playing = t;
         lv.SelectedItem = t; lv.ScrollIntoView(t);
         wmp.URL = t.Path;
         SetSeekFrac(0);
@@ -490,7 +498,7 @@ public class MainWindow : Window {
         bar.Background = Ctl; bar.BorderBrush = Sep;
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
         seekFill.Background = Acc; seekThumb.Fill = Acc;
-        nowLbl.Foreground = Dim; timeLbl.Foreground = Dim;
+        nowLbl.Foreground = Dim; timeLbl.Foreground = Dim; revealIco.Foreground = Dim;
         statusLbl.Foreground = Fg;
         foreach (var b in new[] { btnPrev, btnPlay, btnNext }) b.Foreground = Fg;
         // ListView: Zeilen, Selektion, Header und Gruppentitel einfaerben
