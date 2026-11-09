@@ -7,11 +7,11 @@ Eine einzige C#-Datei → `MyTunes.exe` mit `csc.exe` gebaut. WPF, keine Depende
 
 | Liste (nach Album gruppiert) | Dark Theme |
 |---|---|
-| ![Hauptfenster](sc1.png) | ![Dark Theme](sc3.png) |
+| ![Hauptfenster](screenshots/sc1.png) | ![Dark Theme](screenshots/sc3.png) |
 
 **Informationen & Bulk-Edit** — Tags direkt in den Dateien schreiben, bei Mehrfachauswahl für alle:
 
-![Informationen mit Bulk-Edit](sc2.png)
+![Informationen mit Bulk-Edit](screenshots/sc2.png)
 
 ## Start
 
