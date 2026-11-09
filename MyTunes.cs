@@ -168,7 +168,7 @@ public class MainWindow : Window {
 
         // --- Liste ---
         gv = new GridView();
-        gv.Columns.Add(new GridViewColumn { Header = "#", Width = 55, DisplayMemberBinding = new Binding("Num") });
+        gv.Columns.Add(new GridViewColumn { Header = "#", Width = 55, DisplayMemberBinding = new Binding("Mark") });
         gv.Columns.Add(new GridViewColumn { Header = "Titel", Width = 450, DisplayMemberBinding = new Binding("Title") });
         gv.Columns.Add(new GridViewColumn { Header = "Interpret", Width = 270, DisplayMemberBinding = new Binding("Artist") });
         gv.Columns.Add(new GridViewColumn { Header = "Album", Width = 270, DisplayMemberBinding = new Binding("Album") });
@@ -552,18 +552,6 @@ public class MainWindow : Window {
         hhov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(62, 62, 66) : Color.FromRgb(226, 226, 226))));
         hstyle.Triggers.Add(hhov);
         gv.ColumnHeaderContainerStyle = hstyle;
-        // Spalte "#": Glyph (FA, akzent) beim spielenden Track, sonst Nummer
-        var ctpl = new DataTemplate();
-        var ctb = new FrameworkElementFactory(typeof(TextBlock));
-        ctb.SetBinding(TextBlock.TextProperty, new Binding("Mark"));
-        var cst = new Style(typeof(TextBlock));
-        var pgt = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
-        pgt.Setters.Add(new Setter(TextBlock.ForegroundProperty, Acc));
-        cst.Triggers.Add(pgt);
-        ctb.SetValue(TextBlock.StyleProperty, cst);
-        ctpl.VisualTree = ctb;
-        gv.Columns[0].CellTemplate = ctpl;
-
         var gs = lv.GroupStyle[0];
         gs.HeaderTemplate = new DataTemplate();
         var f = new FrameworkElementFactory(typeof(TextBlock));
@@ -600,6 +588,7 @@ public class MainWindow : Window {
         st.Triggers.Add(hov);
         var pl = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
         pl.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(24, AccC.R, AccC.G, AccC.B))));
+        pl.Setters.Add(new Setter(Control.ForegroundProperty, Acc));   // Glyph+Text in Akzentfarbe
         st.Triggers.Add(pl);
         var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };   // letzter Trigger gewinnt -> Selektion schlaegt Playing
         sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
