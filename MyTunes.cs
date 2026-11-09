@@ -147,7 +147,7 @@ public class MainWindow : Window {
         gv.Columns.Add(new GridViewColumn { Header = "Titel", Width = 450, DisplayMemberBinding = new Binding("Title") });
         gv.Columns.Add(new GridViewColumn { Header = "Interpret", Width = 270, DisplayMemberBinding = new Binding("Artist") });
         gv.Columns.Add(new GridViewColumn { Header = "Album", Width = 270, DisplayMemberBinding = new Binding("Album") });
-        lv = new ListView { View = gv, ItemsSource = items, SelectionMode = SelectionMode.Extended };
+        lv = new ListView { View = gv, ItemsSource = items, SelectionMode = SelectionMode.Extended, BorderThickness = new Thickness(0) };
         view = CollectionViewSource.GetDefaultView(items);
         lv.GroupStyle.Add(new GroupStyle());
         lv.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler(OnHeaderClick));
@@ -241,8 +241,44 @@ public class MainWindow : Window {
         return mi;
     }
     void SetItemColors(MenuItem mi, Brush bg, Brush fg) {
-        mi.Background = bg; mi.Foreground = fg;
+        mi.Background = bg; mi.Foreground = fg; mi.BorderBrush = Sep; mi.Style = FlatMenuItemStyle();
         foreach (var c in mi.Items) { var s = c as MenuItem; if (s != null) SetItemColors(s, bg, fg); }
+    }
+
+    // flaches MenuItem-Template: Border+Content+Popup, kein Aero-Highlight
+    Style FlatMenuItemStyle() {
+        var st = new Style(typeof(MenuItem));
+        var tpl = new ControlTemplate(typeof(MenuItem));
+        var bd = new FrameworkElementFactory(typeof(Border));
+        var rs = new RelativeSource(RelativeSourceMode.TemplatedParent);
+        bd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = rs });
+        var sp = new FrameworkElementFactory(typeof(StackPanel));
+        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+        cp.SetBinding(ContentPresenter.ContentProperty, new Binding("Header") { RelativeSource = rs });
+        cp.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("HeaderTemplate") { RelativeSource = rs });
+        cp.SetValue(ContentPresenter.MarginProperty, new Thickness(10, 5, 10, 5));
+        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+        var pop = new FrameworkElementFactory(typeof(Popup));
+        pop.SetBinding(Popup.IsOpenProperty, new Binding("IsSubmenuOpen") { RelativeSource = rs });
+        pop.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
+        pop.SetValue(Popup.AllowsTransparencyProperty, true);
+        var pbd = new FrameworkElementFactory(typeof(Border));
+        pbd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = rs });
+        pbd.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = rs });
+        pbd.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        var host = new FrameworkElementFactory(typeof(StackPanel));
+        host.SetValue(StackPanel.IsItemsHostProperty, true);
+        pbd.AppendChild(host); pop.AppendChild(pbd);
+        sp.AppendChild(cp); sp.AppendChild(pop); bd.AppendChild(sp);
+        tpl.VisualTree = bd;
+        var hl = new Trigger { Property = MenuItem.IsHighlightedProperty, Value = true };
+        hl.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 65) : Color.FromRgb(226, 226, 226))));
+        tpl.Triggers.Add(hl);
+        var op = new Trigger { Property = MenuItem.IsSubmenuOpenProperty, Value = true };
+        op.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 65) : Color.FromRgb(226, 226, 226))));
+        tpl.Triggers.Add(op);
+        st.Setters.Add(new Setter(MenuItem.TemplateProperty, tpl));
+        return st;
     }
 
     BitmapSource RenderIcon(char c, Color col, int size) {
@@ -447,7 +483,17 @@ public class MainWindow : Window {
         var hstyle = new Style(typeof(GridViewColumnHeader));
         hstyle.Setters.Add(new Setter(Control.BackgroundProperty, Ctl));
         hstyle.Setters.Add(new Setter(Control.ForegroundProperty, Fg));
-        hstyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 6, 8, 6)));
+        hstyle.Setters.Add(new Setter(Control.BorderBrushProperty, Sep));
+        hstyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 7, 8, 7)));
+        var htpl = new ControlTemplate(typeof(GridViewColumnHeader));   // flach statt Aero-Chrome
+        var hbd = new FrameworkElementFactory(typeof(Border));
+        hbd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        hbd.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        hbd.SetValue(Border.BorderThicknessProperty, new Thickness(0, 0, 1, 1));
+        var hcp = new FrameworkElementFactory(typeof(ContentPresenter));
+        hcp.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        hbd.AppendChild(hcp); htpl.VisualTree = hbd;
+        hstyle.Setters.Add(new Setter(GridViewColumnHeader.TemplateProperty, htpl));
         gv.ColumnHeaderContainerStyle = hstyle;
         var gs = lv.GroupStyle[0];
         gs.HeaderTemplate = new DataTemplate();
