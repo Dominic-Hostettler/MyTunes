@@ -63,7 +63,7 @@ public class MainWindow : Window {
     SolidColorBrush Bg, Fg, Ctl, Sep, Acc, Dim;
 
     public MainWindow() {
-        Title = "MyTunes"; Width = 1280; Height = 840; MinWidth = 860; MinHeight = 540;
+        Title = "MyTunes"; Width = 1100; Height = 700; MinWidth = 860; MinHeight = 540;
         FontFamily = new FontFamily("Segoe UI"); FontSize = 13;
         LoadBounds();
 
