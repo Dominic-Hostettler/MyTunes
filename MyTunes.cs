@@ -78,7 +78,7 @@ class DarkTable : ProfessionalColorTable {
 
 class SeekBar : Panel {
     public double Frac;
-    public Color TrackColor = Color.Empty;
+    public Color TrackColor = Color.Empty, FillColor = Color.Empty;
     public event Action<double> Seeked;
     public SeekBar() { DoubleBuffered = true; Cursor = Cursors.Hand; }
     void Set(int x) {
@@ -98,8 +98,9 @@ class SeekBar : Panel {
         var track = TrackColor.IsEmpty ? (Brush)SystemBrushes.ControlLight : new SolidBrush(TrackColor);
         g.FillRectangle(track, 0, y, Width, 4);
         int fill = (int)(Width * Frac);
-        g.FillRectangle(SystemBrushes.Highlight, 0, y, fill, 4);
-        g.FillEllipse(SystemBrushes.Highlight, Math.Max(0, fill - 5), y - 3, 10, 10);
+        var fb = FillColor.IsEmpty ? (Brush)SystemBrushes.Highlight : new SolidBrush(FillColor);
+        g.FillRectangle(fb, 0, y, fill, 4);
+        g.FillEllipse(fb, Math.Max(0, fill - 5), y - 3, 10, 10);
     }
 }
 
@@ -212,15 +213,15 @@ class MainForm : Form {
         btnPrev = NewBtn('\uE76B');
         btnPlay = NewBtn('\uE768');
         btnNext = NewBtn('\uE76C');
-        nowLbl = new Label { AutoSize = true, Padding = new Padding(16, 11, 0, 0), ForeColor = Color.DimGray };
-        volIco = new Label { Text = "\uE767", Font = Mdl2Font, AutoSize = true, Padding = new Padding(16, 9, 0, 0) };
-        vol = new TrackBar { TickStyle = TickStyle.None, Width = 120 };
-        vol.AutoSize = false; vol.Height = 34; vol.Maximum = 100; vol.Value = 80;
-        timeLbl = new Label { AutoSize = true, Padding = new Padding(16, 11, 0, 0), ForeColor = Color.DimGray };
-        flow = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(10, 5, 0, 0), WrapContents = false };
+        nowLbl = new Label { AutoSize = true, Padding = new Padding(18, 14, 0, 0), ForeColor = Color.DimGray };
+        volIco = new Label { Text = "\uE767", Font = Mdl2Font, AutoSize = true, Padding = new Padding(18, 11, 0, 0) };
+        vol = new TrackBar { TickStyle = TickStyle.None, Width = 140 };
+        vol.AutoSize = false; vol.Height = 40; vol.Maximum = 100; vol.Value = 80;
+        timeLbl = new Label { AutoSize = true, Padding = new Padding(18, 14, 0, 0), ForeColor = Color.DimGray };
+        flow = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12, 8, 0, 0), WrapContents = false };
         flow.Controls.AddRange(new Control[] { btnPrev, btnPlay, btnNext, nowLbl, volIco, vol, timeLbl });
-        seek = new SeekBar { Dock = DockStyle.Top, Height = 30 };
-        bar = new Panel { Dock = DockStyle.Bottom, Height = 92 };
+        seek = new SeekBar { Dock = DockStyle.Top, Height = 36 };
+        bar = new Panel { Dock = DockStyle.Bottom, Height = 108 };
         bar.Controls.Add(flow);
         bar.Controls.Add(seek);
         Controls.Add(bar);
@@ -337,7 +338,7 @@ class MainForm : Form {
     }
 
     Button NewBtn(char c) {
-        return new Button { Width = 50, Height = 38, Font = Mdl2Font, Text = c.ToString(), FlatStyle = FlatStyle.Flat,
+        return new Button { Width = 56, Height = 44, Font = Mdl2Font, Text = c.ToString(), FlatStyle = FlatStyle.Flat,
             FlatAppearance = { BorderSize = 0, MouseOverBackColor = Color.FromArgb(45, SystemColors.Highlight) } };
     }
 
@@ -423,7 +424,7 @@ class MainForm : Form {
             }
             scanning = false;
             statusLbl.Text = lv.Items.Count + " Tracks";
-            SetGroupColor(darkOn ? Color.FromArgb(200, 200, 200) : Color.FromArgb(85, 85, 85));
+            SetGroupColor(darkOn ? Color.FromArgb(96, 150, 255) : Color.FromArgb(85, 85, 85));
         }
     }
 
@@ -548,9 +549,53 @@ class MainForm : Form {
         if (lv.IsHandleCreated) SendMessage(lv.Handle, 0x1093, 0, ref m);
     }
 
+    // ---------- dunkle Spaltenkopfzeile (Header Custom Draw, nur im Darkmode) ----------
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, int w, ref HDITEM l);
+    [StructLayout(LayoutKind.Sequential)] struct NMHDR { public IntPtr hwndFrom; public UIntPtr idFrom; public int code; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct NMCUSTOMDRAW { public NMHDR hdr; public int dwDrawStage; public IntPtr hdc; public RECT rc; public IntPtr dwItemSpec; public int uItemState; public IntPtr lItemlParam; }
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int left, top, right, bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    struct HDITEM { public uint mask; public int cxy; public IntPtr pszText; public IntPtr hbm; public int cchTextMax; public int fmt; public IntPtr lParam; public int iImage; public int iOrder; public uint type; public IntPtr pvFilter; public uint state; }
+
+    IntPtr hdrHwnd = IntPtr.Zero;
+    static readonly Color HdrBg = Color.FromArgb(45, 45, 48), HdrFg = Color.FromArgb(215, 215, 215), HdrSep = Color.FromArgb(70, 70, 75);
+
+    void DrawHeaderCustom(ref Message m) {
+        var cd = (NMCUSTOMDRAW)m.GetLParam(typeof(NMCUSTOMDRAW));
+        if (cd.dwDrawStage == 1) { m.Result = (IntPtr)0x20; return; }          // PREPAINT -> ITEMDRAW bitte
+        if (cd.dwDrawStage != 0x10001) return;                                 // CDDS_ITEMPREPAINT
+        var nm = (NMHDR)m.GetLParam(typeof(NMHDR));
+        using (var g = Graphics.FromHdc(cd.hdc)) {
+            var rc = Rectangle.FromLTRB(cd.rc.left, cd.rc.top, cd.rc.right, cd.rc.bottom);
+            using (var bg = new SolidBrush(HdrBg)) g.FillRectangle(bg, rc);
+            var buf = Marshal.AllocHGlobal(520);
+            try {
+                Marshal.WriteInt16(buf, 0);
+                var hdi = new HDITEM { mask = 2, pszText = buf, cchTextMax = 260 };
+                SendMessage(nm.hwndFrom, 0x1231 /*HDM_GETITEMTEXTW*/, (int)cd.dwItemSpec, ref hdi);
+                var txt = Marshal.PtrToStringUni(buf) ?? "";
+                var fmt = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap };
+                using (var fb = new SolidBrush(HdrFg))
+                    g.DrawString(txt, lv.Font, fb, new RectangleF(rc.Left + 6, rc.Top, rc.Width - 8, rc.Height), fmt);
+                using (var pb = new Pen(HdrSep)) {
+                    g.DrawLine(pb, rc.Right - 1, rc.Top + 4, rc.Right - 1, rc.Bottom - 4);
+                    g.DrawLine(pb, rc.Left, rc.Bottom - 1, rc.Right, rc.Bottom - 1);
+                }
+            } finally { Marshal.FreeHGlobal(buf); }
+        }
+        m.Result = (IntPtr)4;   // CDRF_SKIPDEFAULT
+    }
+
     // ---------- groessere Resize-Greifzone (14px ins Fenster rein) ----------
     protected override void WndProc(ref Message m) {
         base.WndProc(ref m);
+        if (darkOn && m.Msg == 0x4E /*WM_NOTIFY*/) {
+            var nm = (NMHDR)m.GetLParam(typeof(NMHDR));
+            if (hdrHwnd == IntPtr.Zero && lv.IsHandleCreated) hdrHwnd = SendMessage(lv.Handle, 0x101F /*LVM_GETHEADER*/, IntPtr.Zero, IntPtr.Zero);
+            if (hdrHwnd != IntPtr.Zero && nm.hwndFrom == hdrHwnd && nm.code == -12 /*NM_CUSTOMDRAW*/) DrawHeaderCustom(ref m);
+        }
         if (m.Msg == 0x84 /*WM_NCHITTEST*/ && m.Result == (IntPtr)1 /*HTCLIENT*/) {
             const int g = 14;
             var p = PointToClient(Cursor.Position);
@@ -588,7 +633,8 @@ class MainForm : Form {
                    : new ToolStripProfessionalRenderer();
         menu.Renderer = r; status.Renderer = r;
         seek.TrackColor = on ? Color.FromArgb(62, 62, 66) : Color.Empty;
-        SetGroupColor(on ? Color.FromArgb(200, 200, 200) : Color.FromArgb(85, 85, 85));
+        seek.FillColor = on ? Color.FromArgb(96, 150, 255) : Color.Empty;
+        SetGroupColor(on ? Color.FromArgb(96, 150, 255) : Color.FromArgb(85, 85, 85));
         SetIcons(fg);
         seek.Invalidate();
     }
