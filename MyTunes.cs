@@ -150,6 +150,9 @@ public class MainWindow : Window {
         gv.Columns.Add(new GridViewColumn { Header = "Interpret", Width = 270, DisplayMemberBinding = new Binding("Artist") });
         gv.Columns.Add(new GridViewColumn { Header = "Album", Width = 270, DisplayMemberBinding = new Binding("Album") });
         lv = new ListView { View = gv, ItemsSource = items, SelectionMode = SelectionMode.Extended, BorderThickness = new Thickness(0) };
+        VirtualizingPanel.SetIsVirtualizing(lv, true);
+        VirtualizingPanel.SetVirtualizationMode(lv, VirtualizationMode.Recycling);
+        VirtualizingPanel.SetIsVirtualizingWhenGrouping(lv, true);   // sonst: 13k Zeilen-Container
         view = CollectionViewSource.GetDefaultView(items);
         lv.GroupStyle.Add(new GroupStyle());
         lv.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler(OnHeaderClick));
@@ -315,8 +318,8 @@ public class MainWindow : Window {
         var dir = ListSortDirection.Ascending;
         if (lastSort == prop) dir = lastAsc ? ListSortDirection.Descending : ListSortDirection.Ascending;
         lastSort = prop; lastAsc = dir == ListSortDirection.Ascending;
-        // Liste dimmen + sperren, Sortierung dezimiert im Hintergrund-Tick
-        lv.IsEnabled = false; lv.Opacity = 0.45;
+        // Zeilen dimmen + alles sperren, Sortierung laeuft im Hintergrund-Tick
+        IsSorting = true; lv.IsEnabled = false;
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
             try {
                 using (view.DeferRefresh()) {
@@ -327,10 +330,13 @@ public class MainWindow : Window {
                     if (prop == "Album") { if (view.GroupDescriptions.Count == 0) view.GroupDescriptions.Add(new PropertyGroupDescription("AlbumKey")); }
                     else view.GroupDescriptions.Clear();
                 }
-            } finally { lv.IsEnabled = true; lv.Opacity = 1; }
+            } finally { IsSorting = false; lv.IsEnabled = true; }
         }));
     }
     string lastSort; bool lastAsc;
+    public static readonly DependencyProperty IsSortingProperty =
+        DependencyProperty.Register("IsSorting", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
+    public bool IsSorting { get { return (bool)GetValue(IsSortingProperty); } set { SetValue(IsSortingProperty, value); } }
 
     // ---------- Scan/Cache ----------
     Track Parse(string fullName, bool cached) {
@@ -535,6 +541,10 @@ public class MainWindow : Window {
         var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
         sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
         st.Triggers.Add(sel);
+        var dim = new DataTrigger {
+            Binding = new Binding("IsSorting") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Window), 1) }, Value = true };
+        dim.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
+        st.Triggers.Add(dim);
         return st;
     }
 
