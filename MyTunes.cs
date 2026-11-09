@@ -410,8 +410,29 @@ public class MainWindow : Window {
     }
 
     // ---------- Wiedergabe ----------
+    static ScrollViewer FindScroll(DependencyObject d) {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(d); i++) {
+            var c = VisualTreeHelper.GetChild(d, i);
+            if (c is ScrollViewer) return (ScrollViewer)c;
+            var r = FindScroll(c);
+            if (r != null) return r;
+        }
+        return null;
+    }
+
     void RevealPlaying() {
-        if (playing != null && items.Contains(playing)) { lv.SelectedItem = playing; lv.ScrollIntoView(playing); }
+        if (playing == null || !items.Contains(playing)) return;
+        lv.SelectedItem = playing;
+        // Zentriert scrollen statt an die Kante
+        int idx = 0, rows = 0; string lastKey = null;
+        foreach (var x in view.Cast<Track>()) {
+            if (x.AlbumKey != lastKey) { rows++; lastKey = x.AlbumKey; }   // Gruppen-Header zaehlt als Zeile
+            if (x == playing) break;
+            idx++; rows++;
+        }
+        var sv = FindScroll(lv);
+        if (sv != null) sv.ScrollToVerticalOffset(Math.Max(0, rows - (lv.ActualHeight / 26) / 2));
+        else lv.ScrollIntoView(playing);
     }
 
     void PlayItem(Track t, bool record = true) {
