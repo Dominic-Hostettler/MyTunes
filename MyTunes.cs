@@ -228,7 +228,7 @@ public class MainWindow : Window {
         bd.AppendChild(cp);
         tpl.VisualTree = bd;
         var trig = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        trig.Setters.Add(new Setter(Button.BackgroundProperty, NewBrush(Color.FromArgb(45, 0, 120, 215))));
+        trig.Setters.Add(new Setter(Button.BackgroundProperty, NewBrush(Color.FromArgb(70, 0, 120, 215))));
         tpl.Triggers.Add(trig);
         b.Template = tpl; b.Background = Brushes.Transparent;
         return b;
@@ -498,6 +498,9 @@ public class MainWindow : Window {
         hcp.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
         hbd.AppendChild(hcp); htpl.VisualTree = hbd;
         hstyle.Setters.Add(new Setter(GridViewColumnHeader.TemplateProperty, htpl));
+        var hhov = new Trigger { Property = GridViewColumnHeader.IsMouseOverProperty, Value = true };
+        hhov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(62, 62, 66) : Color.FromRgb(226, 226, 226))));
+        hstyle.Triggers.Add(hhov);
         gv.ColumnHeaderContainerStyle = hstyle;
         var gs = lv.GroupStyle[0];
         gs.HeaderTemplate = new DataTemplate();
@@ -522,7 +525,7 @@ public class MainWindow : Window {
         tpl.VisualTree = bd;
         st.Setters.Add(new Setter(ListViewItem.TemplateProperty, tpl));
         var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 55, 60) : Color.FromRgb(229, 243, 255))));
+        hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(62, 66, 72) : Color.FromRgb(219, 236, 253))));
         st.Triggers.Add(hov);
         var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
         sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
