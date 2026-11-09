@@ -25,8 +25,12 @@ static class Program {
 }
 
 public class Track {
-    public string Num, Title, Artist, Album, Path;
-    public bool Cached;
+    public string Num { get; set; }
+    public string Title { get; set; }
+    public string Artist { get; set; }
+    public string Album { get; set; }
+    public string Path { get; set; }
+    public bool Cached { get; set; }
     public string AlbumKey { get { return Artist + " - " + Album; } }
 }
 
