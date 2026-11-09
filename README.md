@@ -45,6 +45,10 @@ Musik-Ordner wählen: `Datei > Quellordner wählen...` — wird in `root.txt` ge
 - **Cache**: `tracks.txt` (Pfad + Metadaten + Tags/Zeile) → Liste + Tags sofort beim Start; Hintergrund-Scan merged neue/gelöschte Tracks inkrementell
 - **Persistenz**: `window.txt` (Bounds, Modus, Theme, Sprache), `cols.txt` (Spalten), `root.txt` (Quellordner), `tracks.txt` (Cache)
 
+## Geplant
+
+- **Playlists** — kommt noch
+
 ## Menüs
 
 | Menü | Einträge |
