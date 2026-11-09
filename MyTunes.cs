@@ -254,7 +254,8 @@ public class MainWindow : Window {
         };
         colMenu = new ContextMenu();
         var names = new[] { "#", "Titel", "Interpret", "Album", "Dauer", "Größe", "Geändert", "Erstellt", "Dateiname" };
-        for (int i = 0; i < 9; i++) colMenu.Items.Add(ColToggle(colOrder[i], names[i], colOn[i]));
+        var ctxT = new MenuItem[9];
+        for (int i = 0; i < 9; i++) { ctxT[i] = ColToggle(colOrder[i], names[i], colOn[i]); colMenu.Items.Add(ctxT[i]); }
         var mTheme = MI('\uF53F', "Design", null, null);   // Level-2-Untermenue mit Icon
         var mNorm = new MenuItem { Header = "Normal", IsCheckable = true, IsChecked = theme == 0 };
         var mAlch = new MenuItem { Header = "Alchemist", IsCheckable = true, IsChecked = theme == 1 };
@@ -262,7 +263,13 @@ public class MainWindow : Window {
         mAlch.Click += (s, e) => { theme = 1; mNorm.IsChecked = false; mAlch.IsChecked = true; SetDark(darkOn); };
         mTheme.Items.Add(mNorm); mTheme.Items.Add(mAlch);
         mAnsicht.Items.Add(mTheme);
-        for (int i = 0; i < 9; i++) mAnsicht.Items.Add(ColToggle(colOrder[i], names[i], colOn[i]));
+        var ansT = new MenuItem[9];
+        for (int i = 0; i < 9; i++) { ansT[i] = ColToggle(colOrder[i], names[i], colOn[i]); mAnsicht.Items.Add(ansT[i]); }
+        for (int i = 0; i < 9; i++) {   // Haeckchen in beiden Menues synchron halten
+            int j = i;
+            ctxT[j].Click += (s, e) => ansT[j].IsChecked = ctxT[j].IsChecked;
+            ansT[j].Click += (s, e) => ctxT[j].IsChecked = ansT[j].IsChecked;
+        }
         lv = new ListView { View = gv, ItemsSource = items, SelectionMode = SelectionMode.Extended, BorderThickness = new Thickness(0) };
         VirtualizingPanel.SetIsVirtualizing(lv, true);
         VirtualizingPanel.SetVirtualizationMode(lv, VirtualizationMode.Recycling);
