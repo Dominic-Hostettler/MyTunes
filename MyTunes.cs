@@ -45,7 +45,7 @@ public class MainWindow : Window {
     ListView lv; GridView gv;
     dynamic wmp;
     Button btnPrev, btnPlay, btnNext;
-    TextBlock nowLbl, timeLbl, statusLbl, statusIcon;
+    TextBlock nowLbl, timeLbl, statusLbl;
     Slider vol;
     Grid seek; Border seekFill, seekTrack, bar;
     Ellipse seekThumb;
@@ -110,10 +110,8 @@ public class MainWindow : Window {
 
         // --- Statuszeile unten ---
         statusLbl = new TextBlock { Padding = new Thickness(6, 2, 6, 2) };
-        statusIcon = new TextBlock { Text = "\uF001", FontFamily = fa, Margin = new Thickness(0, 0, 6, 0) };
         sb = new StatusBar();
-        sb.Items.Add(new StatusBarItem { Content = new StackPanel { Orientation = Orientation.Horizontal,
-            Children = { statusIcon, statusLbl } } });
+        sb.Items.Add(new StatusBarItem { Content = statusLbl });
         DockPanel.SetDock(sb, Dock.Bottom);
         dock.Children.Add(sb);
 
@@ -312,18 +310,25 @@ public class MainWindow : Window {
     void OnHeaderClick(object s, RoutedEventArgs e) {
         var h = e.OriginalSource as GridViewColumnHeader;
         if (h == null || h.Column == null) return;
-        var view = (ListCollectionView)CollectionViewSource.GetDefaultView(items);
-        view.SortDescriptions.Clear();
         var col = h.Column.Header.ToString();
         var prop = col == "#" ? "Num" : col == "Titel" ? "Title" : col == "Interpret" ? "Artist" : "Album";
         var dir = ListSortDirection.Ascending;
         if (lastSort == prop) dir = lastAsc ? ListSortDirection.Descending : ListSortDirection.Ascending;
         lastSort = prop; lastAsc = dir == ListSortDirection.Ascending;
-        view.SortDescriptions.Add(new SortDescription(prop, dir));
-        if (prop != "Album") view.SortDescriptions.Add(new SortDescription("Album", ListSortDirection.Ascending));
-        if (prop != "Num") view.SortDescriptions.Add(new SortDescription("Num", ListSortDirection.Ascending));
-        if (prop == "Album") { if (view.GroupDescriptions.Count == 0) view.GroupDescriptions.Add(new PropertyGroupDescription("AlbumKey")); }
-        else view.GroupDescriptions.Clear();
+        // Liste dimmen + sperren, Sortierung dezimiert im Hintergrund-Tick
+        lv.IsEnabled = false; lv.Opacity = 0.45;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => {
+            try {
+                using (view.DeferRefresh()) {
+                    view.SortDescriptions.Clear();
+                    view.SortDescriptions.Add(new SortDescription(prop, dir));
+                    if (prop != "Album") view.SortDescriptions.Add(new SortDescription("Album", ListSortDirection.Ascending));
+                    if (prop != "Num") view.SortDescriptions.Add(new SortDescription("Num", ListSortDirection.Ascending));
+                    if (prop == "Album") { if (view.GroupDescriptions.Count == 0) view.GroupDescriptions.Add(new PropertyGroupDescription("AlbumKey")); }
+                    else view.GroupDescriptions.Clear();
+                }
+            } finally { lv.IsEnabled = true; lv.Opacity = 1; }
+        }));
     }
     string lastSort; bool lastAsc;
 
@@ -480,7 +485,7 @@ public class MainWindow : Window {
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
         seekFill.Background = Acc; seekThumb.Fill = Acc;
         nowLbl.Foreground = Dim; timeLbl.Foreground = Dim;
-        statusLbl.Foreground = Fg; statusIcon.Foreground = Fg;
+        statusLbl.Foreground = Fg;
         foreach (var b in new[] { btnPrev, btnPlay, btnNext }) b.Foreground = Fg;
         // ListView: Zeilen, Selektion, Header und Gruppentitel einfaerben
         lv.ItemContainerStyle = RowStyle();
