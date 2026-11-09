@@ -130,18 +130,19 @@ public class MainWindow : Window {
         mDatei.Items.Add(MI('\uF07B', S("Quellordner w" + "\u00E4" + "hlen", "Choose source folder"), null, PickRoot));
         mDatei.Items.Add(MI('\uF08B', S("Beenden", "Exit"), null, () => Close()));
         var mBearb = new MenuItem { Header = S("Bearbeiten", "Edit") };
-        mBearb.Items.Add(MI('\uF0E2', S("Rückgängig", "Undo"), "Strg+Z", () => Undo()));
-        mBearb.Items.Add(MI('\uF01E', S("Wiederherstellen", "Redo"), "Strg+Y", () => Redo()));
-        mBearb.Items.Add(MI('\uF0C4', S("Ausschneiden", "Cut"), "Strg+X", () => CopyTracks(true)));
-        mBearb.Items.Add(MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks(false)));
-        mBearb.Items.Add(MI('\uF328', S("Einfügen", "Paste"), "Strg+V", () => PasteTracks()));
+        var miCopy = MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks());
+        miCopy.IsEnabled = false; miCopy.Opacity = .5;
+        mBearb.Items.Add(miCopy);
+
         mBearb.Items.Add(MI('\uF14A', S("Alles auswählen", "Select all"), "Strg+A", () => lv.SelectAll()));
         mBearb.Items.Add(MI('\uF002', S("Seite durchsuchen...", "Search..."), "Strg+F", () => SearchTracks()));
         mBearb.Items.Add(MI('\uF061', S("Zum gespielten Track", "Go to playing track"), "Strg+L", () => RevealPlaying()));
-        mBearb.Items.Add(MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
+        var miInfo = MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
             var t = lv.SelectedItem as Track;
             if (t != null) ShowInfo(t);
-        }));
+        });
+        miInfo.IsEnabled = false; miInfo.Opacity = .5;   // lv gibt's hier noch nicht -> Hook kommt spaeter
+        mBearb.Items.Add(miInfo);
         var mAnsicht = new MenuItem { Header = S("Ansicht", "View") };
         mDark = new MenuItem { Header = S("Dunkelmodus", "Dark mode"), IsCheckable = true };
         mDark.Checked += (s, e) => SetDark(true);
@@ -175,6 +176,9 @@ public class MainWindow : Window {
         DockPanel.SetDock(seek, Dock.Top);
 
         btnPrev = Btn('\uF048'); btnPlay = Btn('\u25B6'); btnNext = Btn('\uF051');
+        btnPrev.ToolTip = S("Anfang / vorheriger (←)", "Start / previous (←)");
+        btnPlay.ToolTip = S("Abspielen / Pause (Leertaste)", "Play / pause (Space)");
+        btnNext.ToolTip = S("Nächster (→)", "Next (→)");
         btnPrev.Click += (s, e) => PrevOrRestart();
         btnPlay.Click += (s, e) => TogglePlay();
         btnNext.Click += (s, e) => Step(1);
@@ -316,18 +320,24 @@ public class MainWindow : Window {
         }));
         lv.MouseDoubleClick += (s, e) => { if (Up<ListViewItem>(e.OriginalSource as DependencyObject) != null && lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };   // nur auf Zeilen
         var ctx = new ContextMenu();
-        ctx.Items.Add(MI('\uF0C4', S("Ausschneiden", "Cut"), null, () => CopyTracks(true)));
-        ctx.Items.Add(MI('\uF0C5', S("Kopieren", "Copy"), null, () => CopyTracks(false)));
-        ctx.Items.Add(MI('\uF328', S("Einf" + "\u00FC" + "gen", "Paste"), null, () => PasteTracks()));
-        ctx.Items.Add(MI('\uF14A', S("Alles ausw" + "\u00E4" + "hlen", "Select all"), null, () => lv.SelectAll()));
+        var ctxCopy = MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks());
+        ctx.Items.Add(ctxCopy);
+        ctx.Items.Add(MI('\uF14A', S("Alles ausw" + "\u00E4" + "hlen", "Select all"), "Strg+A", () => lv.SelectAll()));
         ctx.Items.Add(MI('\uF07C', S("Datei im Explorer anzeigen", "Show in Explorer"), null, () => {
             var t = lv.SelectedItem as Track;
             if (t != null) System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + t.Path + "\"");
         }));
-        ctx.Items.Add(MI('\uF05A', S("Informationen", "Info"), null, () => {
+        var ctxInfo = MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
             var t = lv.SelectedItem as Track;
             if (t != null) ShowInfo(t);
-        }));
+        });
+        ctxInfo.IsEnabled = lv.SelectedItem != null;
+        lv.SelectionChanged += (s, e) => {   // sel.-abhaengige Eintraege: ausgrauen + nicht klickbar
+            bool has = lv.SelectedItem != null;
+            ctxInfo.IsEnabled = miInfo.IsEnabled = ctxCopy.IsEnabled = miCopy.IsEnabled = has;
+            ctxInfo.Opacity = miInfo.Opacity = ctxCopy.Opacity = miCopy.Opacity = has ? 1 : .5;
+        };
+        ctx.Items.Add(ctxInfo);
         lv.ContextMenu = ctx;
         lv.PreviewKeyDown += (s, e) => {
             if (e.Key == Key.Enter) {
@@ -420,11 +430,7 @@ public class MainWindow : Window {
                 case Key.Right: Step(1); e.Handled = true; break;
                 case Key.Left: PrevOrRestart(); e.Handled = true; break;
                 case Key.F5: StartJob(false, true); e.Handled = true; break;
-                case Key.Z: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Undo(); break;
-                case Key.Y: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Redo(); break;
-                case Key.X: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) CopyTracks(true); break;
-                case Key.C: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) CopyTracks(false); break;
-                case Key.V: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) PasteTracks(); break;
+                case Key.C: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) CopyTracks(); break;
                 case Key.A: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { lv.SelectAll(); e.Handled = true; } break;
                 case Key.F: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) SearchTracks(); break;
                 case Key.L: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { RevealPlaying(); e.Handled = true; } break;
@@ -792,7 +798,15 @@ public class MainWindow : Window {
         arw.SetValue(TextBlock.VisibilityProperty, Visibility.Collapsed);   // nur bei Untermenue
         var dpk = new FrameworkElementFactory(typeof(DockPanel));
         arw.SetValue(DockPanel.DockProperty, Dock.Right);
-        dpk.AppendChild(arw); dpk.AppendChild(sp);
+        dpk.AppendChild(arw);
+        var gst = new FrameworkElementFactory(typeof(TextBlock));   // Shortcut-Anzeige rechts (InputGestureText)
+        gst.SetBinding(TextBlock.TextProperty, new Binding("InputGestureText") { RelativeSource = rs });
+        gst.SetValue(TextBlock.ForegroundProperty, Dim);
+        gst.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+        gst.SetValue(TextBlock.MarginProperty, new Thickness(18, 0, 4, 0));
+        gst.SetValue(DockPanel.DockProperty, Dock.Right);
+        dpk.AppendChild(gst);
+        dpk.AppendChild(sp);
         bd.AppendChild(dpk);
         tpl.VisualTree = bd;
         var chkable = new Trigger { Property = MenuItem.IsCheckableProperty, Value = true };
@@ -1052,29 +1066,17 @@ public class MainWindow : Window {
         else if (wmp.currentMedia != null) wmp.controls.play();
         else if (lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem);
     }
-    void Undo() { if (histPos > 0 && items.Contains(history[histPos - 1])) { histPos--; PlayItem(history[histPos], false); } }
-    void Redo() { if (histPos < history.Count - 1 && items.Contains(history[histPos + 1])) { histPos++; PlayItem(history[histPos], false); } }
+
 
     // ---------- Bearbeiten ----------
-    void CopyTracks(bool cut) {
+    void CopyTracks() {
         var paths = lv.SelectedItems.Cast<Track>().Select(t => t.Path).ToArray();
         if (paths.Length == 0) return;
         var col = new StringCollection(); col.AddRange(paths);
         var d = new System.Windows.DataObject(); d.SetFileDropList(col);
-        var ms = new MemoryStream(); ms.WriteByte((byte)(cut ? 2 : 5));
+        var ms = new MemoryStream(); ms.WriteByte(5);   // copy
         d.SetData("Preferred DropEffect", ms);
         Clipboard.SetDataObject(d);
-    }
-    void PasteTracks() {
-        var cdo = Clipboard.GetDataObject();
-        if (!cdo.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
-        var dest = lv.SelectedItem != null ? Path.GetDirectoryName(((Track)lv.SelectedItem).Path) : root;
-        // immer kopieren, nie verschieben
-        foreach (var src in (string[])cdo.GetData(System.Windows.DataFormats.FileDrop)) {
-            var target = Path.Combine(dest, Path.GetFileName(src));
-            try { if (!File.Exists(target)) File.Copy(src, target); } catch { }
-        }
-        StartJob(false, true);
     }
     void SearchTracks() {
         var q = Microsoft.VisualBasic.Interaction.InputBox(S("Suchen nach (Titel, Interpret, Album):", "Search for (title, artist, album):"), S("Medien durchsuchen", "Search media"));
