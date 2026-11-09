@@ -176,11 +176,13 @@ public class MainWindow : Window {
         dock.Children.Add(lv);
 
         // --- Tasten ---
+        PreviewKeyDown += (s, e) => {
+            if (e.Key == Key.Space) { TogglePlay(); e.Handled = true; }   // immer, egal welcher Fokus
+        };
         KeyDown += (s, e) => {
             switch (e.Key) {
                 case Key.Right: Step(1); e.Handled = true; break;
                 case Key.Left: PrevOrRestart(); e.Handled = true; break;
-                case Key.Space: TogglePlay(); e.Handled = true; break;
                 case Key.F5: StartJob(false, true); e.Handled = true; break;
                 case Key.Z: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Undo(); break;
                 case Key.Y: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Redo(); break;
