@@ -137,6 +137,12 @@ public class MainWindow : Window {
         mBearb.Items.Add(MI('\uF14A', S("Alles auswählen", "Select all"), "Strg+A", () => lv.SelectAll()));
         mBearb.Items.Add(MI('\uF002', S("Seite durchsuchen...", "Search..."), "Strg+F", () => SearchTracks()));
         mBearb.Items.Add(MI('\uF061', S("Zum gespielten Track", "Go to playing track"), "Strg+L", () => RevealPlaying()));
+        var miExpl = MI('\uF07C', S("Datei im Explorer anzeigen", "Show in Explorer"), "Strg+E", () => {
+            var t = lv.SelectedItem as Track;
+            if (t != null) System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + t.Path + "\"");
+        });
+        miExpl.IsEnabled = false; miExpl.Opacity = .5;
+        mBearb.Items.Add(miExpl);
         var miInfo = MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
             var ts = lv.SelectedItems.Cast<Track>().ToList();
             if (ts.Count > 0) ShowInfo(ts);
@@ -323,10 +329,11 @@ public class MainWindow : Window {
         var ctxCopy = MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks());
         ctx.Items.Add(ctxCopy);
         ctx.Items.Add(MI('\uF14A', S("Alles ausw" + "\u00E4" + "hlen", "Select all"), "Strg+A", () => lv.SelectAll()));
-        ctx.Items.Add(MI('\uF07C', S("Datei im Explorer anzeigen", "Show in Explorer"), null, () => {
+        var ctxExpl = MI('\uF07C', S("Datei im Explorer anzeigen", "Show in Explorer"), "Strg+E", () => {
             var t = lv.SelectedItem as Track;
             if (t != null) System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + t.Path + "\"");
-        }));
+        });
+        ctx.Items.Add(ctxExpl);
         var ctxInfo = MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
             var ts = lv.SelectedItems.Cast<Track>().ToList();
             if (ts.Count > 0) ShowInfo(ts);
@@ -334,8 +341,8 @@ public class MainWindow : Window {
         ctxInfo.IsEnabled = lv.SelectedItem != null;
         lv.SelectionChanged += (s, e) => {   // sel.-abhaengige Eintraege: ausgrauen + nicht klickbar
             bool has = lv.SelectedItem != null;
-            ctxInfo.IsEnabled = miInfo.IsEnabled = ctxCopy.IsEnabled = miCopy.IsEnabled = has;
-            ctxInfo.Opacity = miInfo.Opacity = ctxCopy.Opacity = miCopy.Opacity = has ? 1 : .5;
+            ctxInfo.IsEnabled = miInfo.IsEnabled = ctxCopy.IsEnabled = miCopy.IsEnabled = ctxExpl.IsEnabled = miExpl.IsEnabled = has;
+            ctxInfo.Opacity = miInfo.Opacity = ctxCopy.Opacity = miCopy.Opacity = ctxExpl.Opacity = miExpl.Opacity = has ? 1 : .5;
         };
         ctx.Items.Add(ctxInfo);
         lv.ContextMenu = ctx;
@@ -426,18 +433,19 @@ public class MainWindow : Window {
 
         // --- Tasten ---
         PreviewKeyDown += (s, e) => {
-            if (e.Key == Key.Space) { TogglePlay(); e.Handled = true; }   // immer, egal welcher Fokus
+            if (e.Key == Key.Space) { TogglePlay(); e.Handled = true; return; }   // immer, egal welcher Fokus
+            if (e.Key == Key.Right) { Step(1); e.Handled = true; return; }   // tunneling: vor lv-Verarbeitung
+            if (e.Key == Key.Left) { PrevOrRestart(); e.Handled = true; return; }
         };
         KeyDown += (s, e) => {
             switch (e.Key) {
-                case Key.Right: Step(1); e.Handled = true; break;
-                case Key.Left: PrevOrRestart(); e.Handled = true; break;
                 case Key.F5: StartJob(false, true); e.Handled = true; break;
                 case Key.C: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) CopyTracks(); break;
                 case Key.A: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { lv.SelectAll(); e.Handled = true; } break;
                 case Key.F: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) SearchTracks(); break;
                 case Key.L: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { RevealPlaying(); e.Handled = true; } break;
                 case Key.I: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { var ts = lv.SelectedItems.Cast<Track>().ToList(); if (ts.Count > 0) ShowInfo(ts); e.Handled = true; } break;
+                case Key.E: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { var t2 = lv.SelectedItem as Track; if (t2 != null) System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + t2.Path + "\""); e.Handled = true; } break;
                 case Key.Q: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Close(); break;
             }
         };
@@ -521,7 +529,7 @@ public class MainWindow : Window {
             }
             metaBusy = false;
             WriteCache();   // Meta im Cache sichern -> naechster Start instant
-            Dispatcher.BeginInvoke((Action)(() => CollectionViewSource.GetDefaultView(items).Refresh()));
+            Dispatcher.BeginInvoke((Action)(() => { CollectionViewSource.GetDefaultView(items).Refresh(); RestoreLvFocus(); }));
         });
     }
 
@@ -550,16 +558,22 @@ public class MainWindow : Window {
                 }
                 ApplyTags(t);
                 WriteCache();
-                Dispatcher.BeginInvoke((Action)(() => lv.Items.Refresh()));
+                Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); }));
                 System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
             } catch { }
         }) { IsBackground = true, ApartmentState = System.Threading.ApartmentState.STA }.Start();
     }
 
+    string CleanTag(string s) {   // BOM-Bug hat "ÿþ" als Text in Tags geschrieben -> entfernen + Duplikate dedupen
+        if (string.IsNullOrEmpty(s) || s.IndexOf('\xFF') < 0) return s;
+        var parts = s.Split(new[] { "; " }, StringSplitOptions.None).Select(p => p.Replace("\xFF\xFE", "")).Where(p => p.Length > 0).Distinct();
+        return string.Join("; ", parts);
+    }
+
     void ApplyTags(Track t) {   // Tags schlagen Dateinamen/Pfad (Ordnerstruktur nur Fallback)
-        if (!string.IsNullOrEmpty(t.TagTitle)) t.Title = t.TagTitle;
-        if (!string.IsNullOrEmpty(t.TagArtist)) t.Artist = t.TagArtist;
-        if (!string.IsNullOrEmpty(t.TagAlbum)) t.Album = t.TagAlbum;
+        if (!string.IsNullOrEmpty(t.TagTitle)) t.Title = CleanTag(t.TagTitle);
+        if (!string.IsNullOrEmpty(t.TagArtist)) t.Artist = CleanTag(t.TagArtist);
+        if (!string.IsNullOrEmpty(t.TagAlbum)) t.Album = CleanTag(t.TagAlbum);
         int tn; if (int.TryParse((t.TagNum ?? "").Split('/')[0].Trim(), out tn)) t.Num = t.TagNum.Split('/')[0].Trim();
     }
 
@@ -629,10 +643,10 @@ public class MainWindow : Window {
                         t.TagArtist = t.TagArtist ?? ""; t.TagTitle = t.TagTitle ?? ""; t.TagNum = t.TagNum ?? ""; t.TagAlbumArtist = t.TagAlbumArtist ?? "";
                     } catch { t.TagAlbum = t.Jahr = t.Genre = t.TagArtist = t.TagTitle = t.TagNum = t.TagAlbumArtist = ""; }
                     int cn = System.Threading.Interlocked.Increment(ref tagN);
-                    if (cn % 200 == 0 || cn == tagTotal) { WriteCache(); Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); statusLbl.Text = items.Count + S(" Tracks (Tags ", " tracks (tags ") + cn + "/" + tagTotal + ")"; })); }
+                    if (cn % 200 == 0 || cn == tagTotal) { WriteCache(); Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); statusLbl.Text = items.Count + S(" Tracks (Tags ", " tracks (tags ") + cn + "/" + tagTotal + ")"; })); }
                 }
                 WriteCache();
-                Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); statusLbl.Text = items.Count + " " + S("Tracks", "tracks"); }));
+                Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); statusLbl.Text = items.Count + " " + S("Tracks", "tracks"); }));
             } catch { }
             try { if (wmp2 != null) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(wmp2); } catch { }
             try { if (wm != null) System.Runtime.InteropServices.Marshal.FinalReleaseComObject(wm); } catch { }
@@ -713,7 +727,7 @@ public class MainWindow : Window {
                     t.DurSec = DurToSec(t.Dur);
                     if (++dn % 500 == 0) {   // inkrementell: Cache + Anzeige alle 500
                         WriteCache();
-                        Dispatcher.BeginInvoke((Action)(() => CollectionViewSource.GetDefaultView(items).Refresh()));
+                        Dispatcher.BeginInvoke((Action)(() => { CollectionViewSource.GetDefaultView(items).Refresh(); RestoreLvFocus(); }));
                     }
                 }
                 int dn2 = 0;
@@ -735,13 +749,13 @@ public class MainWindow : Window {
                     } catch { t.Dur = ""; }
                     if (++dn2 % 200 == 0) {
                         WriteCache();
-                        Dispatcher.BeginInvoke((Action)(() => CollectionViewSource.GetDefaultView(items).Refresh()));
+                        Dispatcher.BeginInvoke((Action)(() => { CollectionViewSource.GetDefaultView(items).Refresh(); RestoreLvFocus(); }));
                     }
                 }
             } catch { }
             durBusy = false;
             WriteCache();   // Dauer im Cache sichern
-            Dispatcher.BeginInvoke((Action)(() => CollectionViewSource.GetDefaultView(items).Refresh()));
+            Dispatcher.BeginInvoke((Action)(() => { CollectionViewSource.GetDefaultView(items).Refresh(); RestoreLvFocus(); }));
         });
         th.SetApartmentState(System.Threading.ApartmentState.STA);
         th.IsBackground = true;
@@ -761,7 +775,7 @@ public class MainWindow : Window {
 
     MenuItem MI(char c, string text, string key, Action act) {
         var p = new StackPanel { Orientation = Orientation.Horizontal };
-        p.Children.Add(new TextBlock { Text = c.ToString(), FontFamily = fa, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center });
+        p.Children.Add(new TextBlock { Text = c.ToString(), FontFamily = fa, Width = 18, Margin = new Thickness(0, 0, 8, 0), TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center });   // feste Breite -> Texte buendig
         p.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
         var mi = new MenuItem { Header = p, InputGestureText = key, Style = FlatMenuItemStyle() };
         if (act != null) mi.Click += (s, e) => act();
@@ -1046,7 +1060,7 @@ public class MainWindow : Window {
         int limit = items.Count > 0 ? 2000 : 400;
         if (pending.Count >= limit || (scanDone && pending.Count > 0)) {
             items.AddRange(pending);
-            view.Refresh();
+            view.Refresh(); RestoreLvFocus();
             pending.Clear();
         }
         statusLbl.Text = scanning ? items.Count + S(" Tracks (scanne... ", " tracks (scanning... ") + scanned.Count + ")" : items.Count + " " + S("Tracks", "tracks");
@@ -1069,7 +1083,7 @@ public class MainWindow : Window {
         var have = new HashSet<string>(items.Select(i => i.Path));
         items.RemoveAll(it => !scanPaths.Contains(it.Path));
         foreach (var t in scanned) if (!have.Contains(t.Path)) items.Add(t);
-        view.Refresh();
+        view.Refresh(); RestoreLvFocus();
     }
 
     // ---------- Wiedergabe ----------
@@ -1113,6 +1127,10 @@ public class MainWindow : Window {
         var ordered = view.Cast<Track>().ToList();
         var ref_ = playing ?? lv.SelectedItem as Track;
         int cur = ref_ != null ? ordered.IndexOf(ref_) : -1;
+        if (cur < 0 && ref_ != null) {   // Merge ersetzt Objekte -> stale ref: per Pfad finden
+            cur = ordered.FindIndex(x => x.Path == ref_.Path);
+            if (cur >= 0 && ref_ == playing) playing = ordered[cur];
+        }
         int n = cur >= 0 ? cur + d : 0;
         if (n >= 0 && n < ordered.Count) PlayItem(ordered[n]);
     }
@@ -1292,6 +1310,14 @@ public class MainWindow : Window {
         StartJob(false, true);
     }
 
+    void RestoreLvFocus() {   // Items.Refresh() setzt internen Fokus+Selektion auf 0 -> zurueck auf Auswahl/Playing
+        var t = selFocus != null && items.Contains(selFocus) ? selFocus : lv.SelectedItem as Track ?? playing;
+        if (t == null) return;
+        lv.SelectedItem = t;   // Selektion zuerst (Refresh kann sie auf 0 werfen)
+        var c = lv.ItemContainerGenerator.ContainerFromItem(t) as UIElement;
+        if (c != null) c.Focus();
+    }
+
     void StepSel(int d, bool sh) {   // Pfeil-Schritt mit eigner Fokus/Anker-Logik (WPFs Fokus-Item bleibt nicht synchron)
         var lst = view.Cast<Track>().ToList();
         if (lst.Count == 0) return;
@@ -1380,7 +1406,7 @@ public class MainWindow : Window {
 
     // ---------- ID3v2-Tag schreiben (TPE1/TYER/TCON, ohne Bibliothek) ----------
     byte[] ID3Frame(string id, string text) {
-        var enc = System.Text.Encoding.Unicode.GetBytes("\xFF\xFE" + text);   // UTF-16 mit BOM-Marker
+        var enc = System.Text.Encoding.Unicode.GetBytes("﻿" + text);   // UTF-16 mit BOM-Marker (U+FEFF, nicht literal "ÿþ")
         var f = new byte[11 + enc.Length];
         System.Text.Encoding.ASCII.GetBytes(id).CopyTo(f, 0);
         var sz = BitConverter.GetBytes(1 + enc.Length); Array.Reverse(sz); Array.Copy(sz, 0, f, 4, 4);
@@ -1445,7 +1471,7 @@ public class MainWindow : Window {
         }
         WriteCache();
         infoAck = "✓ " + S("gespeichert", "saved");   // erscheint im Info-Fenster
-        Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); ShowInfo(ts); }));
+        Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); RestoreLvFocus(); ShowInfo(ts); }));
     }
 
     // ---------- Fenster-Persistenz ----------
