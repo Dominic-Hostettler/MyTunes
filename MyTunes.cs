@@ -33,7 +33,7 @@ public class Track : INotifyPropertyChanged {
     public bool Cached { get; set; }
     public string AlbumKey { get { return Artist + " - " + Album; } }
     public event PropertyChangedEventHandler PropertyChanged;
-    bool playing; char glyph = '\uF04B';
+    bool playing; char glyph = '\u25B6';
     public bool IsPlaying { get { return playing; } set { if (playing != value) { playing = value; Prop("IsPlaying"); Prop("Mark"); } } }
     public void SetGlyph(char c) { if (glyph != c) { glyph = c; Prop("Mark"); } }
     public string Mark { get { return playing ? glyph.ToString() : Num; } }
@@ -136,7 +136,7 @@ public class MainWindow : Window {
         seek.Children.Add(seekTrack); seek.Children.Add(seekFill); seek.Children.Add(seekThumb);
         DockPanel.SetDock(seek, Dock.Top);
 
-        btnPrev = Btn('\uF048'); btnPlay = Btn('\uF04B'); btnNext = Btn('\uF051');
+        btnPrev = Btn('\uF048'); btnPlay = Btn('\u25B6'); btnNext = Btn('\uF051');
         btnPrev.Click += (s, e) => PrevOrRestart();
         btnPlay.Click += (s, e) => TogglePlay();
         btnNext.Click += (s, e) => Step(1);
@@ -220,8 +220,8 @@ public class MainWindow : Window {
         seek.MouseLeftButtonUp += (s, e) => { seeking = false; seek.ReleaseMouseCapture(); SeekTo(e.GetPosition(seek).X); };
 
         uiTimer.Tick += (s, e) => {
-            btnPlay.Content = Glyph((int)wmp.playState == 3 ? '\uF04C' : '\uF04B');
-            if (playing != null) playing.SetGlyph((int)wmp.playState == 3 ? '\uF04C' : '\uF04B');
+            btnPlay.Content = Glyph((int)wmp.playState == 3 ? '\u23F8' : '\u25B6');
+            if (playing != null) playing.SetGlyph((int)wmp.playState == 3 ? '\u23F8' : '\u25B6');
             double d = 0;
             try { if (wmp.currentMedia != null) d = wmp.currentMedia.duration; } catch { }
             if (d > 0) {
@@ -558,7 +558,6 @@ public class MainWindow : Window {
         ctb.SetBinding(TextBlock.TextProperty, new Binding("Mark"));
         var cst = new Style(typeof(TextBlock));
         var pgt = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
-        pgt.Setters.Add(new Setter(TextBlock.FontFamilyProperty, fa));
         pgt.Setters.Add(new Setter(TextBlock.ForegroundProperty, Acc));
         cst.Triggers.Add(pgt);
         ctb.SetValue(TextBlock.StyleProperty, cst);
@@ -599,12 +598,12 @@ public class MainWindow : Window {
         var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(62, 66, 72) : Color.FromRgb(219, 236, 253))));
         st.Triggers.Add(hov);
-        var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };
+        var pl = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
+        pl.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(24, AccC.R, AccC.G, AccC.B))));
+        st.Triggers.Add(pl);
+        var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };   // letzter Trigger gewinnt -> Selektion schlaegt Playing
         sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
         st.Triggers.Add(sel);
-        var pl = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
-        pl.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(38, AccC.R, AccC.G, AccC.B))));
-        st.Triggers.Add(pl);
         var dim = new DataTrigger {
             Binding = new Binding("IsSorting") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Window), 1) }, Value = true };
         dim.Setters.Add(new Setter(Control.ForegroundProperty, NewBrush(Color.FromArgb(110, FgC.R, FgC.G, FgC.B))));
