@@ -67,13 +67,14 @@ public class MainWindow : Window {
     Ellipse seekThumb, vThumb;
     bool muted;
     double volFrac = 0.8;
-    Menu menu; StatusBar sb;
+    Menu menu; DockPanel topBar;
     ContextMenu colMenu;
     FontFamily fa;
 
     readonly List<Track> history = new List<Track>();
     int histPos = -1;
     bool darkOn, seeking, scanDone, scanning, wantDark;
+    int theme;
     MenuItem mDark;
 
     ConcurrentQueue<Track> queue = new ConcurrentQueue<Track>();
@@ -123,15 +124,17 @@ public class MainWindow : Window {
         mDark.Unchecked += (s, e) => SetDark(false);
         mAnsicht.Items.Add(MI('\uF186', "Dunkelmodus", null, () => mDark.IsChecked = !mDark.IsChecked));
         menu.Items.Add(mDatei); menu.Items.Add(mBearb); menu.Items.Add(mAnsicht);
-        DockPanel.SetDock(menu, Dock.Top);
-        dock.Children.Add(menu);
+        statusLbl = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0), TextAlignment = TextAlignment.Right };
+        topBar = new DockPanel { LastChildFill = false };
+        menu.HorizontalAlignment = HorizontalAlignment.Left;
+        DockPanel.SetDock(menu, Dock.Left);
+        DockPanel.SetDock(statusLbl, Dock.Right);
+        topBar.Children.Add(menu); topBar.Children.Add(statusLbl);
+        DockPanel.SetDock(topBar, Dock.Top);
+        dock.Children.Add(topBar);
 
         // --- Statuszeile unten ---
-        statusLbl = new TextBlock { Padding = new Thickness(6, 2, 6, 2) };
-        sb = new StatusBar();
-        sb.Items.Add(new StatusBarItem { Content = statusLbl });
-        DockPanel.SetDock(sb, Dock.Bottom);
-        dock.Children.Add(sb);
+        // Track-Zahl sitzt rechts in der Menuezeile (topBar)
 
         // --- Player-Leiste unten ---
         seek = new Grid { Height = 34, Cursor = Cursors.Hand };
@@ -242,6 +245,13 @@ public class MainWindow : Window {
         colMenu = new ContextMenu();
         var names = new[] { "#", "Titel", "Interpret", "Album", "Dauer", "Größe", "Geändert", "Erstellt", "Dateiname" };
         for (int i = 0; i < 9; i++) colMenu.Items.Add(ColToggle(colOrder[i], names[i], colOn[i]));
+        var mTheme = MI('\uF53F', "Design", null, null);   // Level-2-Untermenue mit Icon
+        var mNorm = new MenuItem { Header = "Normal", IsCheckable = true, IsChecked = theme == 0 };
+        var mAlch = new MenuItem { Header = "Alchemist", IsCheckable = true, IsChecked = theme == 1 };
+        mNorm.Click += (s, e) => { theme = 0; mNorm.IsChecked = true; mAlch.IsChecked = false; SetDark(darkOn); };
+        mAlch.Click += (s, e) => { theme = 1; mNorm.IsChecked = false; mAlch.IsChecked = true; SetDark(darkOn); };
+        mTheme.Items.Add(mNorm); mTheme.Items.Add(mAlch);
+        mAnsicht.Items.Add(mTheme);
         for (int i = 0; i < 9; i++) mAnsicht.Items.Add(ColToggle(colOrder[i], names[i], colOn[i]));
         lv = new ListView { View = gv, ItemsSource = items, SelectionMode = SelectionMode.Extended, BorderThickness = new Thickness(0) };
         VirtualizingPanel.SetIsVirtualizing(lv, true);
@@ -515,6 +525,7 @@ public class MainWindow : Window {
         cp.SetValue(ContentPresenter.MarginProperty, new Thickness(14, 7, 14, 7));
         cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         var pop = new FrameworkElementFactory(typeof(Popup));
+        pop.Name = "pop";
         pop.SetBinding(Popup.IsOpenProperty, new Binding("IsSubmenuOpen") { RelativeSource = rs });
         pop.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
         pop.SetValue(Popup.AllowsTransparencyProperty, true);
@@ -557,6 +568,9 @@ public class MainWindow : Window {
         var op = new Trigger { Property = MenuItem.IsSubmenuOpenProperty, Value = true };
         op.Setters.Add(new Setter(MenuItem.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(60, 60, 65) : Color.FromRgb(226, 226, 226))));
         tpl.Triggers.Add(op);
+        var sub = new Trigger { Property = MenuItem.RoleProperty, Value = MenuItemRole.SubmenuHeader };
+        sub.Setters.Add(new Setter(Popup.PlacementProperty, PlacementMode.Right, "pop"));   // Level-2 seitlich statt drueber
+        tpl.Triggers.Add(sub);
         st.Setters.Add(new Setter(MenuItem.TemplateProperty, tpl));
         return st;
     }
@@ -832,19 +846,19 @@ public class MainWindow : Window {
     // ---------- Darkmode ----------
     void SetDark(bool on) {
         darkOn = on;
-        BgC = on ? Color.FromRgb(30, 30, 30) : Colors.White;
+        BgC = on ? (theme == 1 ? Color.FromRgb(7, 6, 10) : Color.FromRgb(30, 30, 30)) : Colors.White;
         FgC = on ? Color.FromRgb(220, 220, 220) : Colors.Black;
-        CtlC = on ? Color.FromRgb(45, 45, 48) : Color.FromRgb(240, 240, 240);
-        SepC = on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(224, 224, 224);
-        AccC = on ? Color.FromRgb(96, 150, 255) : Color.FromRgb(0, 120, 215);
-        DimC = on ? Color.FromRgb(160, 160, 160) : Colors.Gray;
+        CtlC = on ? (theme == 1 ? Color.FromRgb(13, 11, 17) : Color.FromRgb(45, 45, 48)) : Color.FromRgb(240, 240, 240);
+        SepC = on ? (theme == 1 ? Color.FromRgb(26, 23, 32) : Color.FromRgb(62, 62, 66)) : Color.FromRgb(224, 224, 224);
+        AccC = theme == 1 ? Color.FromRgb(150, 100, 230) : (on ? Color.FromRgb(96, 150, 255) : Color.FromRgb(0, 120, 215));
+        DimC = on ? (theme == 1 ? Color.FromRgb(165, 155, 180) : Color.FromRgb(160, 160, 160)) : Colors.Gray;
         Bg = NewBrush(BgC); Fg = NewBrush(FgC); Ctl = NewBrush(CtlC); Sep = NewBrush(SepC); Acc = NewBrush(AccC); Dim = NewBrush(DimC);
 
         Background = Ctl; Foreground = Fg;
         lv.Background = Bg; lv.Foreground = Fg;
         menu.Background = Ctl; menu.Foreground = Fg;
         foreach (MenuItem top in menu.Items) SetItemColors(top, Ctl, Fg);
-        sb.Background = Ctl;
+        topBar.Background = Ctl; statusLbl.Foreground = Fg; statusLbl.Opacity = 0.5;
         bar.Background = Ctl; bar.BorderBrush = Sep;
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
         seekFill.Background = Acc; seekThumb.Fill = Acc;
@@ -855,6 +869,7 @@ public class MainWindow : Window {
         foreach (var b in new[] { btnPrev, btnPlay, btnNext }) { b.Foreground = Fg; b.Template = FlatBtnTemplate(); }
         // ListView: Zeilen, Selektion, Header und Gruppentitel einfaerben
         lv.ItemContainerStyle = RowStyle();
+        lv.Resources[typeof(ScrollBar)] = ScrollBarStyle();
         var hstyle = new Style(typeof(GridViewColumnHeader));
         hstyle.Setters.Add(new Setter(Control.BackgroundProperty, Ctl));
         hstyle.Setters.Add(new Setter(Control.ForegroundProperty, Fg));
@@ -897,6 +912,27 @@ public class MainWindow : Window {
         gs.HeaderTemplate.VisualTree = f;
     }
 
+    Style ScrollBarStyle() {   // minimalistisch: nur Pill-Thumb, keine Buttons (XAML zur Laufzeit)
+        string bg = darkOn ? "#FF55555F" : "#FFB9B9C3";
+        string hv = darkOn ? "#FF7D7D8C" : "#FF8C8CA0";
+        string xaml =
+            "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='{x:Type ScrollBar}'>" +
+            "<Setter Property='Width' Value='11'/><Setter Property='Background' Value='Transparent'/>" +
+            "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='{x:Type ScrollBar}'>" +
+            "<Track x:Name='PART_Track' Orientation='{TemplateBinding Orientation}' IsDirectionReversed='True'>" +
+            "<Track.DecreaseRepeatButton><RepeatButton Command='{x:Static ScrollBar.PageUpCommand}' Opacity='0' Focusable='False'/></Track.DecreaseRepeatButton>" +
+            "<Track.Thumb><Thumb Cursor='Hand'><Thumb.Template>" +
+            "<ControlTemplate TargetType='{x:Type Thumb}'><Border x:Name='b' Margin='2,1' Background='" + bg + "'/>" +
+            "<ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'>" +
+            "<Setter TargetName='b' Property='Background' Value='" + hv + "'/>" +
+            "</Trigger></ControlTemplate.Triggers></ControlTemplate>" +
+            "</Thumb.Template></Thumb></Track.Thumb>" +
+            "<Track.IncreaseRepeatButton><RepeatButton Command='{x:Static ScrollBar.PageDownCommand}' Opacity='0' Focusable='False'/></Track.IncreaseRepeatButton>" +
+            "</Track>" +
+            "</ControlTemplate></Setter.Value></Setter></Style>";
+        return (Style)System.Windows.Markup.XamlReader.Parse(xaml);
+    }
+
     Style RowStyle() {
         var st = new Style(typeof(ListViewItem));
         st.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 5, 6, 5)));
@@ -910,14 +946,14 @@ public class MainWindow : Window {
         tpl.VisualTree = bd;
         st.Setters.Add(new Setter(ListViewItem.TemplateProperty, tpl));
         var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(62, 66, 72) : Color.FromRgb(219, 236, 253))));
+        hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(darkOn ? (byte)45 : (byte)30, AccC.R, AccC.G, AccC.B))));
         st.Triggers.Add(hov);
         var pl = new DataTrigger { Binding = new Binding("IsPlaying"), Value = true };
         pl.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(24, AccC.R, AccC.G, AccC.B))));
         pl.Setters.Add(new Setter(Control.ForegroundProperty, Acc));   // Glyph+Text in Akzentfarbe
         st.Triggers.Add(pl);
         var sel = new Trigger { Property = ListViewItem.IsSelectedProperty, Value = true };   // letzter Trigger gewinnt -> Selektion schlaegt Playing
-        sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 80, 120) : Color.FromRgb(204, 232, 255))));
+        sel.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(Color.FromArgb(darkOn ? (byte)90 : (byte)45, AccC.R, AccC.G, AccC.B))));
         st.Triggers.Add(sel);
         var dim = new DataTrigger {
             Binding = new Binding("IsSorting") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Window), 1) }, Value = true };
@@ -951,7 +987,7 @@ public class MainWindow : Window {
         for (int i = 0; i < rows.Length; i++) {
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var l = new TextBlock { Text = rows[i][0], Foreground = Dim, Margin = new Thickness(0, 4, 16, 4) };
-            var v = new TextBlock { Text = rows[i][1], TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4), TextTrimming = TextTrimming.CharacterEllipsis };
+            var v = new TextBox { Text = rows[i][1], IsReadOnly = true, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Foreground = Fg, Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
             Grid.SetRow(l, i); Grid.SetRow(v, i); Grid.SetColumn(v, 1);
             g.Children.Add(l); g.Children.Add(v);
         }
@@ -963,7 +999,7 @@ public class MainWindow : Window {
     // ---------- Fenster-Persistenz ----------
     void SaveBounds() {
         var r = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
-        try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == WindowState.Maximized ? ",max" : "") + (darkOn ? ",dark" : "")); } catch { }
+        try { File.WriteAllText(WinFile, r.X + "," + r.Y + "," + r.Width + "," + r.Height + (WindowState == WindowState.Maximized ? ",max" : "") + (darkOn ? ",dark" : "") + (theme == 1 ? ",alchemist" : "")); } catch { }
         try {   // Spaltenzustand sichern
             var sb2 = "";
             for (int i = 0; i < colOrder.Count; i++) {
@@ -979,7 +1015,8 @@ public class MainWindow : Window {
             var r = new Rect(double.Parse(p[0]), double.Parse(p[1]), double.Parse(p[2]), double.Parse(p[3]));
             if (SystemParameters.VirtualScreenWidth > 0) { Left = r.X; Top = r.Y; Width = r.Width; Height = r.Height; }
             if (p.Length > 4 && p[4] == "max") WindowState = WindowState.Maximized;
-            wantDark = p[p.Length - 1] == "dark";
+            wantDark = Array.IndexOf(p, "dark") >= 0;
+            theme = Array.IndexOf(p, "alchemist") >= 0 ? 1 : 0;
         } catch { }
     }
 }
