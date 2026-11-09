@@ -25,15 +25,18 @@ Musik-Ordner wählen: `Datei > Quellordner wählen...` — wird in `root.txt` ge
   - 11 Spalten ein-/ausblendbar (`Ansicht > Spalten` oder Rechtsklick auf die Kopfzeile): `#`, `Titel`, `Interpret`, `Album`, `Dauer`, `Größe`, `Geändert`, `Erstellt`, `Dateiname`, `Jahr`, `Genre`
   - Sichtbarkeit, Reihenfolge und Breiten bleiben über Restarts erhalten (`cols.txt`)
   - Spaltenklick = sortieren auf/ab (Pfeil-Indikator); Sortierkette: Spalte → Album → Titelnummer → Titel
-  - **Metadaten aus echten ID3-Tags** (wie Explorer > Details): Interpret/Album/Titel/Nummer + Jahr/Genre — via Shell32, mit `ExtendedProperty` und WMP-Fallback für Sync-Ordner (4 parallele Threads, Fortschritt oben rechts)
+  - **Metadaten aus echten ID3-Tags** (wie Explorer > Details): Interpret/Album/Titel/Nummer + Jahr/Genre — via Shell32, mit `ExtendedProperty` und WMP-Fallback für Sync-Ordner (4 parallele Threads; Fortschritt als 🗄-Icon-Tooltip oben rechts)
   - Dauer via Shell32 → WMP-Fallback → im Cache gespeichert
   - Buchstabensuche in der Liste (Tastatur, mehrere Buchstaben), Klick auf Gruppenzeile selektiert Gruppe
 - **Player-Leiste**: `⏮` Anfang/vorheriger (< 0,5 s im Track → vorheriger), `▶/⏸`, `⏭` — jeweils große Klickzone
   - selbst gezeichnete Seek- + Lautstärke-Leiste (Klick/Drag), Lautsprecher = Stumm
   - Titelanzeige: **Titel** fett – Interpret – Album; Doppelklick = zum gespielten Track
   - **Auto-Next**: Track zu Ende → nächster in der aktuellen Listenreihenfolge
-- **Tasten**: `→`/`←` relativ zum spielenden Track, `Enter` fokussierter → selektierter → erster Track, `Leertaste` Pause
-- **Kontextmenü** auf Track: Ausschneiden/Kopieren/Einfügen, Alles auswählen, Datei im Explorer anzeigen, Informationen (Popup, Werte kopierbar)
+- **Tasten**: `→`/`←` relativ zum spielenden Track, `↑`/`↓` stepen die Auswahl (`Shift` erweitert), `Enter` spielt, `Leertaste` Pause
+- **Kontextmenü** auf Track: Kopieren (`Strg+C`), Alles auswählen (`Strg+A`), Datei im Explorer anzeigen (`Strg+E`), Informationen (`Strg+I`)
+- **Informationen** (`Strg+I`): Metadaten bearbeiten — Titel/Album/Album-Interpret/Nummer/Interpret/Jahr/Genre werden via eigenem ID3v2-Writer in die Datei geschrieben, Dateiname = echtes Umbenennen
+  - **Bulk-Edit**: bei Mehrfachauswahl gemeinsame Werte oder `–` bei Abweichung — Eingabe schreibt in alle Dateien
+  - `Enter` speichert (Fenster bleibt offen, Fokus bleibt), `Esc` schließt, `↑`/`↓` wechselt Track/erweitert Auswahl
 - **Drag & Drop**: Tracks (auch Mehrfachauswahl) in ein Explorer-Fenster ziehen = kopieren, nie verschieben
   - Zahl-Badge am Cursor, normaler Pfeil innen, Kopier-Plus außerhalb
 - **Themes**: `Ansicht > Design` — Normal / Alchemist (violetter Akzent, fast schwarz) / Desert (warmer Amber) — jeweils hell/dunkel
@@ -46,8 +49,8 @@ Musik-Ordner wählen: `Datei > Quellordner wählen...` — wird in `root.txt` ge
 
 | Menü | Einträge |
 |------|----------|
-| **Datei** | Medien neu scannen (`F5`), Quellordner wählen, Beenden |
-| **Bearbeiten** | Rückgängig/Wiederherstellen (`Strg+Z`/`Strg+Y`), Ausschneiden/Kopieren/Einfügen (`Strg+X/C/V`), Alles auswählen (`Strg+A`), Seite durchsuchen (`Strg+F`), Zum gespielten Track (`Strg+L`) |
+| **Datei** | Medien neu scannen (`F5`), Quellordner wählen, Beenden (`Strg+Q`) |
+| **Bearbeiten** | Kopieren (`Strg+C`), Alles auswählen (`Strg+A`), Seite durchsuchen (`Strg+F`), Zum gespielten Track (`Strg+L`), Datei im Explorer anzeigen (`Strg+E`), Informationen (`Strg+I`) |
 | **Ansicht** | Dunkelmodus, Design, Spalten, Sprache |
 
 ## Konfiguration
