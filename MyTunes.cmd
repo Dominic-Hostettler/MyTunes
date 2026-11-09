@@ -10,7 +10,7 @@ goto run
 :build
 "%F%\csc.exe" -nologo -target:winexe -out:MyTunes.exe ^
  -r:"%F%\WPF\PresentationFramework.dll" -r:"%F%\WPF\PresentationCore.dll" -r:"%F%\WPF\WindowsBase.dll" ^
- -r:"%F%\System.Xaml.dll" -r:"%F%\Microsoft.CSharp.dll" -r:"%F%\Microsoft.VisualBasic.dll" -r:"%F%\System.dll" MyTunes.cs
+ -r:"%F%\System.Xaml.dll" -r:"%F%\Microsoft.CSharp.dll" -r:"%F%\Microsoft.VisualBasic.dll" -r:"%F%\System.dll" -r:"%F%\System.Windows.Forms.dll" MyTunes.cs
 if errorlevel 1 pause & exit /b 1
 :run
 start "" MyTunes.exe

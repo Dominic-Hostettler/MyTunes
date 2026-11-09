@@ -1,4 +1,4 @@
-﻿// MyTunes - Musik-Browser fuer "iTunes Media\Music" (WPF, single-file, csc.exe)
+// MyTunes - Musik-Browser fuer "iTunes Media\Music" (WPF, single-file, csc.exe)
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -48,7 +48,16 @@ public class Track : INotifyPropertyChanged {
 }
 
 public class MainWindow : Window {
-    const string Root = @"G:\Meine Ablage\Synchronized\iTunes reduced Copy\iTunes Media\Music";
+    static readonly string DefaultRoot = @"G:\Meine Ablage\Synchronized\iTunes reduced Copy\iTunes Media\Music";
+    string root = LoadRoot();
+    readonly string RootFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "root.txt");
+    static string LoadRoot() {
+        try {
+            var f = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "root.txt");
+            if (File.Exists(f)) { var r = File.ReadAllText(f).Trim(); if (r.Length > 0) return r; }
+        } catch { }
+        return DefaultRoot;
+    }
     static readonly string[] Exts = { ".mp3", ".m4a", ".aac", ".m4p", ".wav", ".flac", ".wma", ".aif", ".aiff" };
     readonly string Cache = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tracks.txt");
     readonly string WinFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "window.txt");
@@ -108,6 +117,7 @@ public class MainWindow : Window {
         menu = new Menu();
         var mDatei = new MenuItem { Header = "Datei" };
         mDatei.Items.Add(MI('\uF021', "Medien neu scannen", "F5", () => StartJob(false, true)));
+        mDatei.Items.Add(MI('\uF07B', "Quellordner w" + "\u00E4" + "hlen", null, PickRoot));
         mDatei.Items.Add(MI('\uF08B', "Beenden", null, () => Close()));
         var mBearb = new MenuItem { Header = "Bearbeiten" };
         mBearb.Items.Add(MI('\uF0E2', "Rückgängig", "Strg+Z", () => Undo()));
@@ -264,7 +274,7 @@ public class MainWindow : Window {
             var h = (e.OriginalSource as FrameworkElement).TemplatedParent as GridViewColumnHeader;
             if (h != null && h.Column != null) h.Column.Width = Math.Max(40, h.Column.Width + e.HorizontalChange);
         }));
-        lv.MouseDoubleClick += (s, e) => { if (lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };
+        lv.MouseDoubleClick += (s, e) => { if (Up<ListViewItem>(e.OriginalSource as DependencyObject) != null && lv.SelectedItem != null) PlayItem((Track)lv.SelectedItem); };   // nur auf Zeilen
         var ctx = new ContextMenu();
         ctx.Items.Add(MI('\uF0C4', "Ausschneiden", null, () => CopyTracks(true)));
         ctx.Items.Add(MI('\uF0C5', "Kopieren", null, () => CopyTracks(false)));
@@ -676,7 +686,7 @@ public class MainWindow : Window {
                 dur = p[4].Length > 0 ? p[4] : null;
             }
         }
-        var rel = fullName.Substring(Root.Length).TrimStart('\\').Split('\\');
+        var rel = fullName.Substring(root.Length).TrimStart('\\').Split('\\');
         var title = System.IO.Path.GetFileNameWithoutExtension(fullName); var num = "";
         var m = System.Text.RegularExpressions.Regex.Match(title, @"^(\d+)\s+(.+)$");
         if (m.Success) { num = m.Groups[1].Value; title = m.Groups[2].Value; }
@@ -718,7 +728,7 @@ public class MainWindow : Window {
         Task.Run(() => {
             try {
                 if (doCache && File.Exists(Cache)) foreach (var l in File.ReadLines(Cache)) queue.Enqueue(Parse(l, true));
-                if (doScan) foreach (var f in EnumFiles(Root)) queue.Enqueue(Parse(f, false));
+                if (doScan) foreach (var f in EnumFiles(root)) queue.Enqueue(Parse(f, false));
             } finally { scanDone = true; }
         });
         scanTimer.Start();
@@ -825,7 +835,7 @@ public class MainWindow : Window {
     void PasteTracks() {
         var cdo = Clipboard.GetDataObject();
         if (!cdo.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
-        var dest = lv.SelectedItem != null ? Path.GetDirectoryName(((Track)lv.SelectedItem).Path) : Root;
+        var dest = lv.SelectedItem != null ? Path.GetDirectoryName(((Track)lv.SelectedItem).Path) : root;
         bool move = false;
         try { move = (((MemoryStream)cdo.GetData("Preferred DropEffect")).ReadByte() & 2) != 0; } catch { }
         foreach (var src in (string[])cdo.GetData(System.Windows.DataFormats.FileDrop)) {
@@ -917,12 +927,12 @@ public class MainWindow : Window {
         string hv = darkOn ? "#FF7D7D8C" : "#FF8C8CA0";
         string xaml =
             "<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='{x:Type ScrollBar}'>" +
-            "<Setter Property='Width' Value='11'/><Setter Property='Background' Value='Transparent'/>" +
+            "<Setter Property='Background' Value='Transparent'/>" +
             "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='{x:Type ScrollBar}'>" +
             "<Track x:Name='PART_Track' Orientation='{TemplateBinding Orientation}' IsDirectionReversed='True'>" +
             "<Track.DecreaseRepeatButton><RepeatButton Command='{x:Static ScrollBar.PageUpCommand}' Opacity='0' Focusable='False'/></Track.DecreaseRepeatButton>" +
             "<Track.Thumb><Thumb Cursor='Hand'><Thumb.Template>" +
-            "<ControlTemplate TargetType='{x:Type Thumb}'><Border x:Name='b' Margin='2,1' Background='" + bg + "'/>" +
+            "<ControlTemplate TargetType='{x:Type Thumb}'><Border x:Name='b' Background='" + bg + "'/>" +
             "<ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'>" +
             "<Setter TargetName='b' Property='Background' Value='" + hv + "'/>" +
             "</Trigger></ControlTemplate.Triggers></ControlTemplate>" +
@@ -960,6 +970,15 @@ public class MainWindow : Window {
         dim.Setters.Add(new Setter(Control.ForegroundProperty, NewBrush(Color.FromArgb((byte)(darkOn ? 60 : 110), FgC.R, FgC.G, FgC.B))));
         st.Triggers.Add(dim);
         return st;
+    }
+
+    void PickRoot() {   // Quellordner waehlen -> merken + neu scannen
+        var d = new System.Windows.Forms.FolderBrowserDialog { SelectedPath = root, Description = "Musik-Ordner wählen" };
+        if (d.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+        root = d.SelectedPath;
+        try { File.WriteAllText(RootFile, root); } catch { }
+        items.Clear(); view.Refresh();
+        StartJob(false, true);
     }
 
     void ShowInfo(Track t) {   // nur ein Fenster: vorhandenes wird aktualisiert
