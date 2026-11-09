@@ -127,6 +127,12 @@ public class MainWindow : Window {
         seekTrack = new Border { Height = 5, CornerRadius = new CornerRadius(2.5), VerticalAlignment = VerticalAlignment.Center };
         seekFill = new Border { Height = 5, CornerRadius = new CornerRadius(2.5), HorizontalAlignment = HorizontalAlignment.Left, Width = 0 };
         seekThumb = new Ellipse { Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-6, 0, 0, 0) };
+        var es = new Style(typeof(Ellipse));
+        var et = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        et.Setters.Add(new Setter(Ellipse.WidthProperty, 16.0));
+        et.Setters.Add(new Setter(Ellipse.HeightProperty, 16.0));
+        es.Triggers.Add(et);
+        seekThumb.Style = es;   // Knubbel waechst bei Hover
         seek.Children.Add(seekTrack); seek.Children.Add(seekFill); seek.Children.Add(seekThumb);
         DockPanel.SetDock(seek, Dock.Top);
 
@@ -430,11 +436,11 @@ public class MainWindow : Window {
     void RevealPlaying() {
         if (playing == null || !items.Contains(playing)) return;
         lv.SelectedItem = playing;
-        // zuverlaessig via ScrollIntoView: erst unter das Ziel, dann eine Zeile davor -> Track = 2. Zeile
+        // zuverlaessig: erst ans Ende (Ziel liegt dann UEBER dem Viewport), dann zum Track -> oberste Zeile
         var list = view.Cast<Track>().ToList();
-        int idx = list.IndexOf(playing), vis = Math.Max(1, (int)(lv.ActualHeight / 26) + 2);
-        lv.ScrollIntoView(list[Math.Min(list.Count - 1, idx + vis)]);
-        lv.ScrollIntoView(list[Math.Max(0, idx - 1)]);
+        int idx = list.IndexOf(playing);
+        lv.ScrollIntoView(list[list.Count - 1]);
+        lv.ScrollIntoView(list[idx]);
     }
 
     void PlayItem(Track t, bool record = true) {
@@ -522,7 +528,8 @@ public class MainWindow : Window {
         bar.Background = Ctl; bar.BorderBrush = Sep;
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
         seekFill.Background = Acc; seekThumb.Fill = Acc;
-        nowLbl.Foreground = Dim; timeLbl.Foreground = Dim; revealIco.Foreground = Dim;
+        nowLbl.Foreground = Dim; timeLbl.Foreground = Dim;
+        revealIco.Style = IconHoverStyle();   // Style statt Direktwert, sonst schlaegt Local-Value den Trigger
         statusLbl.Foreground = Fg;
         foreach (var b in new[] { btnPrev, btnPlay, btnNext }) b.Foreground = Fg;
         // ListView: Zeilen, Selektion, Header und Gruppentitel einfaerben
@@ -566,6 +573,15 @@ public class MainWindow : Window {
         f.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
         f.SetValue(TextBlock.PaddingProperty, new Thickness(4, 10, 0, 4));
         gs.HeaderTemplate.VisualTree = f;
+    }
+
+    Style IconHoverStyle() {
+        var st = new Style(typeof(TextBlock));
+        st.Setters.Add(new Setter(TextBlock.ForegroundProperty, Dim));
+        var t = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        t.Setters.Add(new Setter(TextBlock.ForegroundProperty, Acc));
+        st.Triggers.Add(t);
+        return st;
     }
 
     Style RowStyle() {
