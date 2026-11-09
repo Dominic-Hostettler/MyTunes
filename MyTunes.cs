@@ -128,7 +128,7 @@ public class MainWindow : Window {
         var mDatei = new MenuItem { Header = S("Datei", "File") };
         mDatei.Items.Add(MI('\uF021', S("Medien neu scannen", "Rescan media"), "F5", () => StartJob(false, true)));
         mDatei.Items.Add(MI('\uF07B', S("Quellordner w" + "\u00E4" + "hlen", "Choose source folder"), null, PickRoot));
-        mDatei.Items.Add(MI('\uF08B', S("Beenden", "Exit"), null, () => Close()));
+        mDatei.Items.Add(MI('\uF08B', S("Beenden", "Exit"), "Strg+Q", () => Close()));
         var mBearb = new MenuItem { Header = S("Bearbeiten", "Edit") };
         var miCopy = MI('\uF0C5', S("Kopieren", "Copy"), "Strg+C", () => CopyTracks());
         miCopy.IsEnabled = false; miCopy.Opacity = .5;
@@ -138,8 +138,8 @@ public class MainWindow : Window {
         mBearb.Items.Add(MI('\uF002', S("Seite durchsuchen...", "Search..."), "Strg+F", () => SearchTracks()));
         mBearb.Items.Add(MI('\uF061', S("Zum gespielten Track", "Go to playing track"), "Strg+L", () => RevealPlaying()));
         var miInfo = MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
-            var t = lv.SelectedItem as Track;
-            if (t != null) ShowInfo(t);
+            var ts = lv.SelectedItems.Cast<Track>().ToList();
+            if (ts.Count > 0) ShowInfo(ts);
         });
         miInfo.IsEnabled = false; miInfo.Opacity = .5;   // lv gibt's hier noch nicht -> Hook kommt spaeter
         mBearb.Items.Add(miInfo);
@@ -328,8 +328,8 @@ public class MainWindow : Window {
             if (t != null) System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + t.Path + "\"");
         }));
         var ctxInfo = MI('\uF05A', S("Informationen", "Info"), "Strg+I", () => {
-            var t = lv.SelectedItem as Track;
-            if (t != null) ShowInfo(t);
+            var ts = lv.SelectedItems.Cast<Track>().ToList();
+            if (ts.Count > 0) ShowInfo(ts);
         });
         ctxInfo.IsEnabled = lv.SelectedItem != null;
         lv.SelectionChanged += (s, e) => {   // sel.-abhaengige Eintraege: ausgrauen + nicht klickbar
@@ -340,6 +340,9 @@ public class MainWindow : Window {
         ctx.Items.Add(ctxInfo);
         lv.ContextMenu = ctx;
         lv.PreviewKeyDown += (s, e) => {
+            if (e.Key == Key.Up || e.Key == Key.Down) {   // eigener Step (WPFs Fokus-Item bleibt nicht synchron)
+                StepSel(e.Key == Key.Down ? 1 : -1, (Keyboard.Modifiers & ModifierKeys.Shift) != 0); e.Handled = true; return;
+            }
             if (e.Key == Key.Enter) {
                 var fe = Keyboard.FocusedElement as FrameworkElement;
                 var t = (fe != null ? fe.DataContext : null) as Track ?? lv.SelectedItem as Track ?? view.Cast<Track>().FirstOrDefault();
@@ -434,7 +437,8 @@ public class MainWindow : Window {
                 case Key.A: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { lv.SelectAll(); e.Handled = true; } break;
                 case Key.F: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) SearchTracks(); break;
                 case Key.L: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { RevealPlaying(); e.Handled = true; } break;
-                case Key.I: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { var t = lv.SelectedItem as Track; if (t != null) ShowInfo(t); e.Handled = true; } break;
+                case Key.I: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) { var ts = lv.SelectedItems.Cast<Track>().ToList(); if (ts.Count > 0) ShowInfo(ts); e.Handled = true; } break;
+                case Key.Q: if (e.KeyboardDevice.Modifiers == ModifierKeys.Control) Close(); break;
             }
         };
 
@@ -956,7 +960,7 @@ public class MainWindow : Window {
     }
     string lastSort, typeBuf = ""; int lastDir, lastClickTick, typeTick;
     Window infoWin;
-    string infoAck, infoFocus; Button infoSave;
+    string infoAck, infoFocus; Button infoSave; Track selAnchor, selFocus;
     public static readonly DependencyProperty IsSortingProperty =
         DependencyProperty.Register("IsSorting", typeof(bool), typeof(MainWindow), new PropertyMetadata(false));
     public bool IsSorting { get { return (bool)GetValue(IsSortingProperty); } set { SetValue(IsSortingProperty, value); } }
@@ -1084,6 +1088,12 @@ public class MainWindow : Window {
         if (playing != null) playing.IsPlaying = false;
         playing = t; t.IsPlaying = true;
         lv.SelectedItem = t; lv.ScrollIntoView(t);
+        selAnchor = selFocus = t;   // Fokus folgt dem gespielten Track
+        var fe = Keyboard.FocusedElement;
+        if (fe is ListViewItem || fe == lv) {   // internes Fokus-Item nachziehen -> Pfeile starten hier (nicht Index 0)
+            var c = lv.ItemContainerGenerator.ContainerFromItem(t) as UIElement;
+            if (c != null) Keyboard.Focus(c);
+        }
         wmp.URL = t.Path;
         RefreshTags(t);   // gespielten Track im Hintergrund aktualisieren (korrigierte Tags uebernehmen)
         SetSeekFrac(0);
@@ -1282,7 +1292,26 @@ public class MainWindow : Window {
         StartJob(false, true);
     }
 
-    void ShowInfo(Track t) {   // nur ein Fenster: vorhandenes wird aktualisiert
+    void StepSel(int d, bool sh) {   // Pfeil-Schritt mit eigner Fokus/Anker-Logik (WPFs Fokus-Item bleibt nicht synchron)
+        var lst = view.Cast<Track>().ToList();
+        if (lst.Count == 0) return;
+        var foc = selFocus != null && lst.Contains(selFocus) ? selFocus : lv.SelectedItem as Track ?? playing;
+        int i = foc == null ? 0 : lst.IndexOf(foc) + d;
+        if (i < 0 || i >= lst.Count) return;
+        if (!sh) { lv.SelectedItems.Clear(); lv.SelectedItems.Add(lst[i]); selAnchor = lst[i]; }
+        else {
+            int a = lst.IndexOf(selAnchor ?? lst[i]);
+            lv.SelectedItems.Clear();
+            for (int k = Math.Min(a, i); k <= Math.Max(a, i); k++) lv.SelectedItems.Add(lst[k]);
+        }
+        selFocus = lst[i]; lv.ScrollIntoView(lst[i]);
+        if (infoWin != null && infoWin.IsVisible) ShowInfo(lv.SelectedItems.Cast<Track>().ToList());
+        var c = lv.ItemContainerGenerator.ContainerFromItem(lst[i]) as UIElement;
+        if (c != null) c.Focus();   // internen Fokus synchron halten
+    }
+
+    void ShowInfo(List<Track> ts) {   // Bulk: gemeinsame Werte, abweichende = "–"
+        var t = ts[0];
         if (infoWin == null) {
             infoWin = new Window {
                 Title = S("Informationen", "Info"), Width = 440, SizeToContent = SizeToContent.Height,
@@ -1293,41 +1322,43 @@ public class MainWindow : Window {
             infoWin.PreviewKeyDown += (s, e) => {
                 if (e.Key == Key.Escape) infoWin.Close();
                 else if (e.Key == Key.Enter && infoSave != null && infoSave.IsEnabled) infoSave.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));   // speichern, offen bleiben
+                else if (e.Key == Key.Up || e.Key == Key.Down) { StepSel(e.Key == Key.Down ? 1 : -1, (Keyboard.Modifiers & ModifierKeys.Shift) != 0); e.Handled = true; }
             };
         }
         infoWin.Background = Bg; infoWin.Foreground = Fg;
+        infoWin.Title = S("Informationen", "Info") + (ts.Count > 1 ? " (" + ts.Count + ")" : "");
         var g = new Grid { Margin = new Thickness(16, 12, 16, 12) };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Func<Func<Track, string>, string> Sh = g2 => { var v = g2(t) ?? ""; return ts.All(x => (g2(x) ?? "") == v) ? v : "–"; };
         var rows = new string[][] {
-            new[] { S("Titel", "Title"), t.Title, "T" }, new[] { S("Interpret", "Artist"), t.Artist, "I" }, new[] { "Album", t.Album, "A" },
-            new[] { S("Album-Interpret", "Album artist"), t.TagAlbumArtist ?? "", "AA" },
-            new[] { S("Nummer", "Number"), t.Num, "N" }, new[] { S("Jahr", "Year"), t.Jahr ?? "", "J" },
-            new[] { "Genre", t.Genre ?? "", "G" },
-            new[] { S("Dateiname", "Filename"), t.File, "F" },
-            new[] { S("Dauer", "Length"), t.Dur ?? "", "" },
-            new[] { S("Größe", "Size"), t.Len > 0 ? (t.Len / 1024.0).ToString("N1") + " MB" : "", "" },
-            new[] { S("Geändert", "Modified"), t.Modified.Year > 2000 ? t.Modified.ToString("dd.MM.yyyy HH:mm") : "", "" },
-            new[] { S("Erstellt", "Created"), t.Created.Year > 2000 ? t.Created.ToString("dd.MM.yyyy HH:mm") : "", "" },
-            new[] { S("Pfad", "Path"), t.Path, "" }
+            new[] { S("Titel", "Title"), Sh(x => x.Title), "T" }, new[] { S("Interpret", "Artist"), Sh(x => x.Artist), "I" },
+            new[] { "Album", Sh(x => x.Album), "A" }, new[] { S("Album-Interpret", "Album artist"), Sh(x => x.TagAlbumArtist), "AA" },
+            new[] { S("Nummer", "Number"), Sh(x => x.Num), "N" }, new[] { S("Jahr", "Year"), Sh(x => x.Jahr), "J" },
+            new[] { "Genre", Sh(x => x.Genre), "G" },
+            new[] { S("Dateiname", "Filename"), Sh(x => x.File), ts.Count == 1 ? "F" : "" },   // Umbenennen nur einzeln
+            new[] { S("Dauer", "Length"), Sh(x => x.Dur), "" },
+            new[] { S("Größe", "Size"), Sh(x => x.Len > 0 ? (x.Len / 1024.0).ToString("N1") + " MB" : ""), "" },
+            new[] { S("Geändert", "Modified"), Sh(x => x.Modified.Year > 2000 ? x.Modified.ToString("dd.MM.yyyy HH:mm") : ""), "" },
+            new[] { S("Erstellt", "Created"), Sh(x => x.Created.Year > 2000 ? x.Created.ToString("dd.MM.yyyy HH:mm") : ""), "" },
+            new[] { S("Pfad", "Path"), Sh(x => x.Path), "" }
         };
-        var edit = new Dictionary<string, TextBox>();
+        var edit = new Dictionary<string, TextBox>(); var init = new Dictionary<string, string>();
         for (int i = 0; i < rows.Length; i++) {
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var l = new TextBlock { Text = rows[i][0], Foreground = Dim, Margin = new Thickness(0, 4, 16, 4) };
             bool ed = rows[i][2] != "";
-            var v = new TextBox { Text = rows[i][1], IsReadOnly = !ed, BorderThickness = ed ? new Thickness(0, 0, 0, 1) : new Thickness(0), BorderBrush = Sep, Background = Brushes.Transparent, Foreground = Fg, Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
-            if (ed) { edit[rows[i][2]] = v; int ci = i; v.GotKeyboardFocus += (s2, e2) => infoFocus = rows[ci][2]; }
+            var v = new TextBox { Text = rows[i][1], IsReadOnly = !ed, BorderThickness = ed ? new Thickness(0, 0, 0, 1) : new Thickness(0), BorderBrush = Sep, Background = Brushes.Transparent, Foreground = rows[i][1] == "–" ? Dim : Fg, Padding = new Thickness(0), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+            if (ed) { edit[rows[i][2]] = v; init[rows[i][2]] = rows[i][1]; int ci = i; v.GotKeyboardFocus += (s2, e2) => infoFocus = rows[ci][2]; }
             Grid.SetRow(l, i); Grid.SetRow(v, i); Grid.SetColumn(v, 1);
             g.Children.Add(l); g.Children.Add(v);
         }
         var sv = new Button { Content = S("Speichern", "Save"), Padding = new Thickness(14, 4, 14, 4), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0), Cursor = Cursors.Hand, IsEnabled = false };
         infoSave = sv;
-        Action upd = () => sv.IsEnabled = edit["T"].Text != t.Title || edit["I"].Text != t.Artist || edit["A"].Text != t.Album ||
-            edit["AA"].Text != (t.TagAlbumArtist ?? "") || edit["N"].Text != t.Num || edit["J"].Text != (t.Jahr ?? "") ||
-            edit["G"].Text != (t.Genre ?? "") || edit["F"].Text != t.File;
+        Action upd = () => sv.IsEnabled = init.Any(kv => edit[kv.Key].Text != kv.Value);
         foreach (var v in edit.Values) v.TextChanged += (s, e) => upd();
-        sv.Click += (s, e) => SaveTrackTags(t, edit["T"].Text, edit["A"].Text, edit["AA"].Text, edit["N"].Text, edit["F"].Text, edit["I"].Text, edit["J"].Text, edit["G"].Text);
+        Func<string, string> V = k => edit[k].Text == "–" ? null : edit[k].Text;   // "–" = unangetastet -> pro Datei lassen
+        sv.Click += (s, e) => SaveTrackTags(ts, V("T"), V("A"), V("AA"), V("N"), edit.ContainsKey("F") ? V("F") : null, V("I"), V("J"), V("G"));
         var ack = new TextBlock { Foreground = Acc, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 10, 0) };
         var br = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         br.Children.Add(ack); br.Children.Add(sv);
@@ -1388,26 +1419,33 @@ public class MainWindow : Window {
         File.WriteAllBytes(path, outp);
     }
 
-    void SaveTrackTags(Track t, string title, string album, string albumArtist, string num, string file, string artist, string jahr, string genre) {   // echte ID3-Tags via WinRT + ID3v2 (powershell spawn)
-        new System.Threading.Thread(() => SaveTrackTagsWork(t, title, album, albumArtist, num, file, artist, jahr, genre)).Start();
+    void SaveTrackTags(List<Track> ts, string title, string album, string albumArtist, string num, string file, string artist, string jahr, string genre) {
+        new System.Threading.Thread(() => SaveTrackTagsWork(ts, title, album, albumArtist, num, file, artist, jahr, genre)).Start();
     }
-    void SaveTrackTagsWork(Track t, string title, string album, string albumArtist, string num, string file, string artist, string jahr, string genre) {
-        if (!string.IsNullOrEmpty(file) && file != t.File) {   // Dateiname = echtes Umbenennen (leer = nicht essentiell)
-            try { var np = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(t.Path), file); File.Move(t.Path, np); t.Path = np; } catch { }
-            t.File = file;
+    void SaveTrackTagsWork(List<Track> ts, string title, string album, string albumArtist, string num, string file, string artist, string jahr, string genre) {
+        var t0 = ts[0];
+        if (ts.Count == 1 && !string.IsNullOrEmpty(file) && file != t0.File) {   // Dateiname = echtes Umbenennen, nur einzeln
+            try { var np = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(t0.Path), file); File.Move(t0.Path, np); t0.Path = np; } catch { }
+            t0.File = file;
         }
-        try {   // alle Felder via ID3v2 (leer = Frame loeschen)
-            WriteID3(t.Path, new Dictionary<string, string> {
-                { "TIT2", title }, { "TALB", album }, { "TPE2", albumArtist }, { "TRCK", num },
-                { "TPE1", artist }, { "TYER", jahr }, { "TCON", genre } });
-        } catch { }
-        t.TagTitle = title; t.TagAlbum = album; t.TagAlbumArtist = albumArtist; t.TagNum = num;
-        t.TagArtist = artist; t.Jahr = jahr; t.Genre = genre;
-        t.Title = title; t.Album = album; t.Artist = artist;   // gespeicherte Werte direkt (auch geleerte)
-        int nn; t.Num = int.TryParse((num ?? "").Split('/')[0].Trim(), out nn) ? num.Split('/')[0].Trim() : num;
+        var vals = new Dictionary<string, string>();
+        if (title != null) vals["TIT2"] = title; if (album != null) vals["TALB"] = album;
+        if (albumArtist != null) vals["TPE2"] = albumArtist; if (num != null) vals["TRCK"] = num;
+        if (artist != null) vals["TPE1"] = artist; if (jahr != null) vals["TYER"] = jahr;
+        if (genre != null) vals["TCON"] = genre;
+        foreach (var t in ts) {
+            try { WriteID3(t.Path, vals); } catch { }
+            if (title != null) { t.TagTitle = title; t.Title = title; }
+            if (album != null) { t.TagAlbum = album; t.Album = album; }
+            if (albumArtist != null) t.TagAlbumArtist = albumArtist;
+            if (num != null) { t.TagNum = num; int nn; t.Num = int.TryParse((num ?? "").Split('/')[0].Trim(), out nn) ? num.Split('/')[0].Trim() : num; }
+            if (artist != null) { t.TagArtist = artist; t.Artist = artist; }
+            if (jahr != null) t.Jahr = jahr;
+            if (genre != null) t.Genre = genre;
+        }
         WriteCache();
         infoAck = "✓ " + S("gespeichert", "saved");   // erscheint im Info-Fenster
-        Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); ShowInfo(t); }));
+        Dispatcher.BeginInvoke((Action)(() => { lv.Items.Refresh(); ShowInfo(ts); }));
     }
 
     // ---------- Fenster-Persistenz ----------
