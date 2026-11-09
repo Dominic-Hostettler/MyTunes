@@ -54,7 +54,7 @@ public class Track : INotifyPropertyChanged {
 }
 
 public class MainWindow : Window {
-    static readonly string DefaultRoot = @"G:\Meine Ablage\Synchronized\iTunes reduced Copy\iTunes Media\Music";
+    static readonly string DefaultRoot = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
     string root = LoadRoot();
     readonly string RootFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "root.txt");
     static string LoadRoot() {
