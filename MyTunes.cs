@@ -319,14 +319,15 @@ public class MainWindow : Window {
             }
         };
         lv.GiveFeedback += (s, e) => {   // Badge folgt dem Cursor
-            if (dragBadge != null) {   // Cursor.Position = phys. Pixel -> DIP umrechnen (DPI-Skalierung)
-                var p = System.Windows.Forms.Cursor.Position;
-                var m = PresentationSource.FromVisual(lv).CompositionTarget.TransformToDevice;
-                dragBadge.Left = p.X / m.M11 + 4; dragBadge.Top = p.Y / m.M22 + 6;
+            var p = System.Windows.Forms.Cursor.Position;
+            var m = PresentationSource.FromVisual(lv).CompositionTarget.TransformToDevice;
+            if (dragBadge != null) { dragBadge.Left = p.X / m.M11 + 4; dragBadge.Top = p.Y / m.M22 + 6; }
+            var tl = PointToScreen(new Point(0, 0));
+            if (p.X >= tl.X && p.X <= tl.X + ActualWidth * m.M11 && p.Y >= tl.Y && p.Y <= tl.Y + ActualHeight * m.M22) {   // innen normaler Pfeil, draussen OLE-Plus
+                e.UseDefaultCursors = false;
+                try { System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Arrow; } catch { }
+                e.Handled = true;
             }
-            e.UseDefaultCursors = false;
-            try { System.Windows.Forms.Cursor.Current = System.Windows.Forms.Cursors.Arrow; } catch { }   // normaler Pfeil statt Verbotssymbol
-            e.Handled = true;
         };
         lv.PreviewMouseLeftButtonDown += (s, e) => {
             dragStart = e.GetPosition(lv);
