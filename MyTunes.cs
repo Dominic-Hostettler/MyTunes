@@ -514,6 +514,13 @@ public class MainWindow : Window {
         st.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 5, 6, 5)));
         st.Setters.Add(new Setter(Control.ForegroundProperty, Fg));
         st.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+        var tpl = new ControlTemplate(typeof(ListViewItem));   // flach, ohne Aero-Selektion
+        var bd = new FrameworkElementFactory(typeof(Border));
+        bd.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        bd.SetBinding(Border.PaddingProperty, new Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+        bd.AppendChild(new FrameworkElementFactory(typeof(GridViewRowPresenter)));
+        tpl.VisualTree = bd;
+        st.Setters.Add(new Setter(ListViewItem.TemplateProperty, tpl));
         var hov = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
         hov.Setters.Add(new Setter(Control.BackgroundProperty, NewBrush(darkOn ? Color.FromRgb(55, 55, 60) : Color.FromRgb(229, 243, 255))));
         st.Triggers.Add(hov);
