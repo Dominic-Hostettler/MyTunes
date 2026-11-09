@@ -1162,6 +1162,7 @@ public class MainWindow : Window {
         lv.Background = Bg; lv.Foreground = Fg;
         menu.Background = Ctl; menu.Foreground = Fg;
         foreach (MenuItem top in menu.Items) SetItemColors(top, Ctl, Fg);
+        if (lv != null && lv.ContextMenu != null) foreach (MenuItem c in lv.ContextMenu.Items) SetItemColors(c, Ctl, Fg);   // Kontextmenü: gleiche Farben + Style (war nur Hauptmenü)
         topBar.Background = Ctl; statusLbl.Foreground = Fg; statusLbl.Opacity = 0.5;
         bar.Background = Ctl; bar.BorderBrush = Sep;
         seekTrack.Background = NewBrush(on ? Color.FromRgb(62, 62, 66) : Color.FromRgb(214, 214, 214));
