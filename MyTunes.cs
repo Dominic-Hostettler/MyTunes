@@ -337,7 +337,7 @@ public class MainWindow : Window {
             if (dragOk) {   // selektierte Zeile gedrueckt -> ganze Mehrfachauswahl, sonst nur diese
                 var t = hit.DataContext as Track;
                 dragPaths = (lv.SelectedItems.Contains(t) ? lv.SelectedItems.Cast<Track>() : new[] { t }).Select(x => x.Path).ToArray();
-                if (lv.SelectedItems.Contains(t) && (System.Windows.Input.Keyboard.Modifiers & (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift)) == 0) { pendingItem = t; e.Handled = true; }   // Drag behaelt Mehrfachauswahl, echter Klick kollabiert spaeter
+                if (lv.SelectedItems.Contains(t) && e.ClickCount == 1 && (System.Windows.Input.Keyboard.Modifiers & (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift)) == 0) { pendingItem = t; e.Handled = true; }   // Drag behaelt Mehrfachauswahl, echter Klick kollabiert spaeter
             }
             if (!dragOk) {   // Klick auf farbige Gruppenzeile -> ganze Gruppe selektieren
                 var gi = Up<GroupItem>(src);
