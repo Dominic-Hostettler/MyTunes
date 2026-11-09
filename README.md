@@ -3,6 +3,16 @@
 Kleiner, schneller Musik-Browser für **beliebige Ordner mit Musikdateien** — kein iTunes, kein Sync-Dienst nötig.
 Eine einzige C#-Datei → `MyTunes.exe` mit `csc.exe` gebaut. WPF, keine Dependencies, kein Installer.
 
+## Screenshots
+
+| Liste (nach Album gruppiert) | Dark Theme |
+|---|---|
+| ![Hauptfenster](sc1.png) | ![Dark Theme](sc3.png) |
+
+**Informationen & Bulk-Edit** — Tags direkt in den Dateien schreiben, bei Mehrfachauswahl für alle:
+
+![Informationen mit Bulk-Edit](sc2.png)
+
 ## Start
 
 `MyTunes.cmd` doppelklicken — baut die exe bei Bedarf und startet sie.
